@@ -1,12 +1,13 @@
 // Builds the land, water, paths, sky and every piece of scenery, then bakes the static parts.
 import * as THREE from 'three';
-import { RAMP, flat, glowTex, bake, ball, at, cone, mesh } from './gfx.js';
+import { RAMP, flat, glowTex, bake, ball, at, cone, mesh, box } from './gfx.js';
 import { reseed, rand, rng, pick, fbm, smooth, lerp, polyDist } from './util.js';
 import {
   WATER, WORLD, RING, LIMIT, RIVER, POND, BRIDGE, PATHS, SITES,
-  height, groundAt, bridgeDeck, onBridge, pathDist, hitSolid,
+  height, groundAt, bridgeDeck, onBridge, pathDist, hitSolid, addSolid,
 } from './layout.js';
 import * as P from './props.js';
+import { deposits, projects, workbench, plots, meadowBoard, neighborhood, plotProject, villageJobs } from './rebuild.js';
 
 const SKY = { top: 0x4aaeea, mid: 0x9fdcf8, bot: 0xfff2cc, fog: 0xdcefee };
 const PETALS = [0xffffff, 0xff8fb0, 0xffd166, 0xc79bff, 0xff7a59];
@@ -217,12 +218,19 @@ export function buildWorld(scene) {
   scene.add(frameScenery, houseScenery);
   houseScenery.visible = false;
   W.house = houseScenery;
-  W.finishHouse = () => {
-    frameScenery.visible = false;
-    houseScenery.visible = true;
-  };
   add(P.logPile(-20.5, -10.5, 0.9));
-  add(P.stall(7, 8.5, toPlaza(7, 8.5)));
+  const [bx, bz] = projects.bakery.site;
+  const bakeryFrame = bake(P.frame(bx, bz, toPlaza(bx, bz), 'BAKERY PROJECT'));
+  const bakery = bake(P.cottage(bx, bz, toPlaza(bx, bz), { wall: 0xffdfac, roof: 0xbc5e82, door: 0x80426b, w: 3.4 }));
+  const oven = new THREE.Group();
+  oven.position.set(9.5, height(9.5, 8), 8);
+  oven.add(at(box(1.05, 0.9, 0.85, 0xbf7157, 0.04, 0.16), 0, 0.45, 0));
+  oven.add(at(box(0.56, 0.32, 0.04, 0x4b3140, 0.02, 0.02), 0, 0.4, 0.44));
+  const bakerySign = P.signboard('BAKERY', Math.PI, 8.7, 6.5);
+  scene.add(bakeryFrame, bakery, oven, bakerySign);
+  const bench = P.bench(...workbench, Math.PI / 2);
+  const benchSign = P.signboard('WORKBENCH', Math.PI / 2, workbench[0], workbench[1] - 0.5);
+  scene.add(bench, benchSign);
   add(P.noticeBoard(-4.4, 9, P.facing(-4.4, 9, 0, 9)));
   for (const a of [0.785, 2.356, 3.927, 5.498]) add(P.lamp(Math.cos(a) * 7.4, Math.sin(a) * 7.4));
   add(P.bench(3.9, -3.9, toPlaza(3.9, -3.9)));
@@ -255,13 +263,60 @@ export function buildWorld(scene) {
 
   // the creek and its bridge
   add(P.bridge(BRIDGE.x0, BRIDGE.x1, BRIDGE.z, bridgeDeck));
-  const wood = P.logPile(46, -23.7, 0.45, false);
-  const woodSign = P.signboard('BRUNO’S WOOD', 0, 0, 0.9);
-  woodSign.position.y = 0.45;
-  wood.add(woodSign);
-  wood.visible = false;
-  scene.add(wood);
-  W.wood = wood;
+  W.deposits = new Map();
+  for (const node of deposits) {
+    const { x, z, kind } = node;
+    let prop;
+    if (kind === 'wood') prop = P.logPile(x, z, 0.45, false);
+    else {
+      prop = new THREE.Group();
+      prop.position.set(x, height(x, z), z);
+      if (kind === 'apples') {
+        prop.add(at(box(0.8, 0.32, 0.65, 0xa9794a, 0.02, 0.05), 0, 0.18, 0));
+        for (const dx of [-0.23, 0, 0.23]) prop.add(at(ball(0.15, 0xe74945, 0.015, 10, 8), dx, 0.37, 0));
+      } else {
+        prop.add(at(ball(0.58, 0xa9a2b8, 0.03, 8, 6), 0, 0.31, 0));
+        if (kind === 'copper') for (const dx of [-0.18, 0, 0.2]) {
+          prop.add(at(cone(0.11, 0.4, 0xe98354, 0.018, 6), dx, 0.78, 0.1));
+        }
+      }
+    }
+    const marker = P.signboard(node.name.toUpperCase(), 0, 0, 0.7);
+    marker.position.y = 0.52;
+    prop.add(marker);
+    scene.add(prop);
+    W.deposits.set(node.id, prop);
+  }
+
+  const board = P.signpost(...meadowBoard, 0, [['MEADOW PLANNING', 0, 0]]);
+  scene.add(board);
+  const stakes = plots.map(([x, z], index) => {
+    const prop = P.signboard('PLOT ' + (index + 1), 0, x, z);
+    scene.add(prop);
+    return prop;
+  });
+  const builds = new Map();
+  const palette = { lodge: [0xffd5ab, 0x718bca], workshop: [0xe2d4a3, 0x557e6b], bakehouse: [0xffdfac, 0xc56c90] };
+  W.showNeighborhood = (progress, unlocked, done) => {
+    board.visible = unlocked;
+    stakes.forEach((stake, index) => { stake.visible = unlocked && !Object.values(progress.plots).includes(index); });
+    for (const name of Object.keys(neighborhood)) {
+      if (!(name in progress.plots)) continue;
+      if (!builds.has(name)) {
+        const [x, z] = plotProject(progress, name).site;
+        const [wall, roof] = palette[name];
+        const frame = bake(P.frame(x, z, 0, 'FOUNDATION', false));
+        const finished = bake(P.cottage(x, z, 0, { wall, roof, door: 0xa25746, solid: false }));
+        const sign = P.signboard(neighborhood[name].title.toUpperCase(), 0, x - 1.9, z + 1.5);
+        scene.add(frame, finished, sign);
+        addSolid(x, z, 1.9);
+        builds.set(name, { frame, finished });
+      }
+      const { frame, finished } = builds.get(name);
+      finished.visible = done(name);
+      frame.visible = !finished.visible;
+    }
+  };
 
   // A roadside stop between the bridge and the climb to the watchtower.
   add(P.signpost(43, -18.5, -0.45, [['WATCHTOWER →', 0.2, 0.05], ['← WILLOWBEND', -0.2, -0.05]]));
@@ -281,6 +336,22 @@ export function buildWorld(scene) {
 
   // landmarks out in the wilds
   add(P.watchtower(SITES.tower.x, SITES.tower.z));
+  const beacon = new THREE.Group();
+  beacon.position.set(SITES.tower.x, height(SITES.tower.x, SITES.tower.z) + 7.2, SITES.tower.z);
+  beacon.add(at(ball(0.8, 0xffab48, 0, 12, 10), 0, 0, 0));
+  beacon.add(at(ball(0.54, 0xffe09a, 0, 12, 10), 0, 0.48, 0));
+  const light = new THREE.PointLight(0xffb55c, 28, 23);
+  beacon.add(light);
+  scene.add(beacon);
+  W.showProjects = (started, cottageDone, bakeryDone, ovenBuilt, beaconDone) => {
+    frameScenery.visible = !cottageDone;
+    houseScenery.visible = cottageDone;
+    bench.visible = benchSign.visible = started;
+    bakeryFrame.visible = cottageDone && !bakeryDone;
+    bakery.visible = bakerySign.visible = bakeryDone;
+    oven.visible = ovenBuilt;
+    beacon.visible = beaconDone;
+  };
   add(P.cave(SITES.cave.x, SITES.cave.z, P.facing(SITES.cave.x, SITES.cave.z, -82, -36)));
   add(P.signpost(64, -33, -0.6, [['TOWER →', 0.2, 0.05], ['← VILLAGE', -0.2, -0.05]]));
   add(P.signpost(-74, -30, 0.5, [['← CAVE', -0.2, -0.05], ['VILLAGE →', 0.2, 0.05]]));
@@ -290,7 +361,7 @@ export function buildWorld(scene) {
   const clear = (x, z, pad, r = 0.6) => {
     const h = height(x, z);
     return h > WATER + 0.35 && h < 9 && ringDist(x, z) < LIMIT + 6 && pathDist(x, z) > pad &&
-      Math.hypot(x, z) > 9 && !hitSolid(x, z, r) && !onBridge(x, z) &&
+      Math.hypot(x, z) > 9 && !plots.some(([px, pz]) => Math.hypot(x - px, z - pz) < 4) && !hitSolid(x, z, r) && !onBridge(x, z) &&
       !(Math.abs(x - F.x) < F.w / 2 + 1.5 && Math.abs(z - F.z) < F.d / 2 + 1.5) &&
       Math.hypot(x - G.x, z - G.z) > 9.5;
   };
@@ -355,6 +426,37 @@ export function buildWorld(scene) {
       add(P.flower(x + rand(-0.7, 0.7), z + rand(-0.55, 0.55), PETALS[i]));
     }
   }
+
+  // Connect the village road, market, farm, and pond without widening the main trail.
+  for (const trail of [
+    [[0, 19], [-5, 23], [-12, 20], [-19, 16]],
+    [[-5, 23], [-9, 30], [-16, 37], [-22, 41]],
+    [[-28, -6], [-28, -2], [-28, 2], [-36, 1]],
+  ]) {
+    ribbon(trail, 1.65, 0xc9a56a, 0.075);
+    ribbon(trail, 1.25, 0xeed5a1, 0.09);
+  }
+
+  const errands = new Map();
+  for (const job of villageJobs) {
+    const [x, z] = job.finish;
+    const [sx, sz] = job.stop;
+    const stall = bake(P.stall(x - 2.2, z, 0));
+    const sign = P.signboard(job.title.toUpperCase(), 0, x - 1.8, z + 1.4);
+    const marker = P.signboard(job.pickup.toUpperCase(), 0, sx, sz);
+    const display = new THREE.Group();
+    display.position.set(x - 2.2, height(x - 2.2, z) + 1.15, z + 0.45);
+    const color = { market: 0xef86bc, pond: 0x62afb6, orchard: 0xe65043 }[job.id];
+    for (const offset of [-0.35, 0, 0.35]) display.add(at(ball(0.16, color, 0.015, 10, 8), offset, 0, 0));
+    scene.add(stall, sign, marker, display);
+    errands.set(job.id, { marker, display });
+  }
+  W.showErrands = states => {
+    for (const [id, { marker, display }] of errands) {
+      marker.visible = states[id] === 'active';
+      display.visible = states[id] === 'done';
+    }
+  };
 
   const baked = bake(root, 64);
   scene.add(baked);

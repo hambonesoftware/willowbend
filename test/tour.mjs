@@ -5,6 +5,11 @@ import path from 'node:path';
 import { serve, ROOT } from './serve.mjs';
 import { launchBrowser } from './browser.mjs';
 
+async function closeConversation(page) {
+  await page.getByRole('button', { name: 'Goodbye' }).click();
+  await page.waitForFunction(() => document.activeElement?.id === 'c');
+}
+
 const OUT = path.join(ROOT, 'test-results');
 fs.mkdirSync(OUT, { recursive: true });
 const only = process.argv[2];
@@ -67,7 +72,7 @@ if (only !== 'route') {
   check(s.z < before.z - 6, 'W walks the kid up the road', `z ${before.z} -> ${s.z}`);
   check(s.zone === 'Willowbend Village', 'the zone sign names the village', s.zone);
   const walkedVillagers = s.villagers.filter(v => v.state !== 'pose').length;
-  check(walkedVillagers === 6, 'villagers leave their opening poses');
+  check(walkedVillagers === 9, 'villagers leave their opening poses');
   await shot(page, '03-walking');
 
   await page.evaluate(() => window.WB.sim(0.6, ['KeyW']));
@@ -86,6 +91,7 @@ if (only !== 'route') {
   s = await info(page);
   check(s.speaking === 'Mabel', 'Space starts the chat');
   await shot(page, '04-talk');
+  await closeConversation(page);
 
   // the bridge carries you over the creek; the creek stops you anywhere else
   await page.evaluate(() => { window.WB.warp(19.5, -21); window.WB.lookAt(19.5, -30); window.WB.sim(0.1); });
@@ -198,29 +204,138 @@ if (!only || only === 'route') {
       window.WB.lookAt(x, z);
       window.WB.sim(0.2);
     });
+    const conversation = page.locator('#conversation');
+    const choose = async label => {
+      await conversation.getByRole('button', { name: label }).click();
+      await closeConversation(page);
+    };
     await approachBruno();
     await page.keyboard.press('Space');
+    await choose('Talk about rebuilding');
     const objective = page.locator('#objective');
     await objective.waitFor({ state: 'visible', timeout: 5000 });
-    check((await objective.textContent()).includes('across Bramble Creek'), 'Bruno gives directions to the wood');
+    const visit = async (x, z, label) => {
+      const walkable = await page.evaluate(([x, z]) => {
+        window.WB.warp(x, z);
+        window.WB.sim(0.25);
+        return window.WB.walkable(x, z);
+      }, [x, z]);
+      check(walkable, label + ' approach is walkable');
+      await page.keyboard.press('Space');
+    };
     await page.evaluate(() => {
-      window.WB.warp(46, -22);
-      window.WB.lookAt(46, -23.7);
-      window.WB.sim(0.2);
+      const { x, z } = window.WB.villager('Mabel');
+      window.WB.warp(x, z + 1);
+      window.WB.sim(0.25);
     });
-    check((await page.locator('#prompt').textContent()).includes('Pick up wood'), 'the marked pile offers pickup');
     await page.keyboard.press('Space');
-    check((await objective.textContent()).includes('Bring the wood'), 'collecting the bundle updates the objective');
-    await approachBruno();
-    await page.keyboard.press('Space');
-    check((await objective.textContent()).includes('house is finished'), 'returning wood completes the quest');
-    check((await info(page)).houseFinished, 'the finished house replaces its frame');
-    await page.evaluate(() => {
-      window.WB.warp(-14, -10);
-      window.WB.lookAt(-17, -13);
-      window.WB.sim(0.3);
+    await conversation.waitFor({ state: 'visible' });
+    check((await conversation.locator('#conversation-reply').textContent()).includes('Bramble Creek'),
+      'a different villager notices the active cottage job');
+    await conversation.getByRole('button', { name: 'Where should I go?' }).click();
+    check((await conversation.locator('#conversation-reply').textContent()).includes('east road'),
+      'direction topic gives a personal answer');
+    await conversation.getByRole('button', { name: 'Active jobs' }).click();
+    check((await conversation.locator('#conversation-reply').textContent()).includes('Gather branches'),
+      'active jobs topic repeats the next step without changing progress');
+    await closeConversation(page);
+    const voices = await page.evaluate(() => {
+      window.WB.warp(4, 4);
+      window.WB.positionVillager('Mabel', 5, 4);
+      window.WB.positionVillager('Biscuit', 7, 4);
+      const voices = new Set();
+      for (let i = 0; i < 7; i++) {
+        window.WB.sim(2);
+        const panel = document.getElementById('chatter');
+        if (!panel.hidden) voices.add(panel.textContent.split(' · ')[0]);
+      }
+      return voices.size;
     });
-    await shot(page, '14-finished-house');
+    check(voices >= 2, 'villagers exchange lines with at least two speakers');
+
+    check((await objective.textContent()).includes('Bramble Creek'), 'Bruno lends the hatchet and gives directions');
+    await visit(46, -22, 'creek wood');
+    check((await info(page)).progress.inventory.wood === 3, 'hatchet yields wood');
+    await visit(-12, -13.5, 'workbench');
+    check((await info(page)).progress.inventory.planks === 3, 'workbench crafts planks');
+    await visit(-14, -11, 'cottage');
+    check((await info(page)).houseFinished, 'the finished cottage replaces its frame');
+    await visit(52, -27, 'meadow stone');
+    await visit(7, 5.8, 'bakery');
+    check((await info(page)).progress.built.bakery.stone === 3, 'partial delivery installs the bakery oven');
+
+    await page.reload();
+    await page.waitForFunction(() => window.READY, null, { timeout: 60000 });
+    await page.keyboard.press('Enter');
+    check((await info(page)).progress.built.bakery.stone === 3, 'partial construction survives reload');
+    await visit(-5, -32, 'woods wood');
+    await visit(-38, 1, 'orchard apples');
+    await visit(-12, -13.5, 'workbench');
+    await visit(7, 5.8, 'bakery');
+    check((await info(page)).progress.photos.includes('bakery'), 'completed bakery gets a portrait');
+    await visit(-85, -37, 'cave copper');
+    await visit(-58, -24, 'highland stone');
+    await visit(-12, -13.5, 'workbench');
+    check((await info(page)).progress.inventory.lantern === 1, 'workbench crafts the lantern');
+    await visit(72, -37, 'watchtower');
+    check((await info(page)).progress.built.beacon.lantern === 1, 'lantern lights the watchtower');
+
+    for (const [id, host, stop] of [
+      ['market', [-5, 23], [-19, 16]],
+      ['pond', [-16, 37], [-22, 41]],
+      ['orchard', [-28, 2], [-36, 1]],
+    ]) {
+      await visit(...host, id + ' host');
+      await choose(/^Start job/);
+      check((await info(page)).progress.errands[id] === 'active', id + ' job starts through dialogue');
+      await visit(...stop, id + ' pickup');
+      check((await info(page)).progress.errands[id] === 'carrying', id + ' job records its pickup');
+      await visit(...host, id + ' delivery');
+      await choose(/^(Deliver|Report back)/);
+      check((await info(page)).progress.errands[id] === 'done', id + ' job completes through dialogue');
+    }
+
+    const planner = page.locator('#planner');
+    const openPlanner = async () => {
+      await visit(54, -21.3, 'planning board');
+      await planner.waitFor({ state: 'visible' });
+    };
+    await openPlanner();
+    const lots = planner.locator('section');
+    await lots.nth(0).getByRole('button', { name: 'Meadow bakehouse' }).click();
+    await lots.nth(1).getByRole('button', { name: 'Meadow lodge' }).click();
+    await lots.nth(2).getByRole('button', { name: 'Meadow workshop' }).click();
+    check((await info(page)).progress.plots.bakehouse === 0, 'player chooses where the bakehouse goes');
+    await planner.getByRole('button', { name: 'Close' }).click();
+    await visit(47, -31, 'stormfall timber');
+    await visit(61, -33, 'meadow quarry');
+    await visit(48, -24, 'meadow apples');
+    await visit(-12, -13.5, 'workbench');
+    await visit(51, -29.2, 'meadow bakehouse');
+    await visit(57, -29.2, 'meadow lodge');
+    await visit(60, -23.2, 'meadow workshop');
+    check(Object.keys((await info(page)).progress.built.bakehouse).length === 3, 'bakehouse accepts player-gathered supplies');
+    await openPlanner();
+    await planner.getByRole('button', { name: 'Pip · Deliver apples' }).click();
+    await planner.getByRole('button', { name: 'Bruno · Haul timber' }).click();
+    await planner.getByRole('button', { name: 'Close' }).click();
+    await page.evaluate(() => window.WB.sim(18));
+    check((await info(page)).progress.jobs.Pip === 'delivered', 'Pip walks a delivery route and stocks the bakehouse');
+    check((await info(page)).progress.jobs.Bruno === 'delivered', 'Bruno delivers timber to the workshop');
+    await openPlanner();
+    await planner.getByRole('button', { name: 'Celebrate opening day' }).click();
+    check((await info(page)).progress.opening, 'opening day adds the neighborhood group portrait');
+
+    await page.reload();
+    await page.waitForFunction(() => window.READY, null, { timeout: 60000 });
+    await page.keyboard.press('Enter');
+    await page.locator('#open-album').click();
+    await page.waitForFunction(() => {
+      const photos = [...document.querySelectorAll('#album img')];
+      return photos.length === 13 && photos.every(photo => photo.complete && photo.naturalWidth > 0);
+    }, null, { timeout: 20000 });
+    check(await page.locator('#album figure').count() === 13, 'all thirteen portraits load from device storage');
+    await shot(page, '14-rebuild-album');
     check(errors.length === 0, 'no page errors on the keyboard route or quest', errors.join(' | '));
   } catch (error) {
     console.error('Last player state:', JSON.stringify(await info(page).catch(() => null)));

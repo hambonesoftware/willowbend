@@ -103,6 +103,9 @@ export function zoneAt(x, z) {
   if (d(16, SITES.glade.x, SITES.glade.z)) return 'Elder Tree Glade';
   if (d(18, SITES.tower.x, SITES.tower.z)) return 'Old Watchtower';
   if (d(13, SITES.cave.x, SITES.cave.z)) return 'Echo Cave';
+  if (d(4, -5, 23)) return 'Farmgate Market';
+  if (d(4, -16, 37)) return 'Pond Trail Shelter';
+  if (d(3, -28, 2)) return 'Orchard Cider Stand';
   if (d(17, POND.x, POND.z)) return 'Lily Pond';
   if (Math.abs(x - SITES.farm.x) < 8 && Math.abs(z - SITES.farm.z) < 7) return 'Village Farm';
   if (d(11, SITES.orchard.x, SITES.orchard.z)) return 'Appleby Orchard';

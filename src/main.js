@@ -1,8 +1,10 @@
+import { topics, chatter } from './dialogue.js';
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
 import { makeKid, makeCat, makeBunny, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
 import { groundAt, walkable, zoneAt, height, WATER } from './layout.js';
 import { rand, clamp, lerp } from './util.js';
+import { projects, deposits, workbench, materials, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject, villageJobs } from './rebuild.js';
 
 const $ = id => document.getElementById(id);
 const TEST = /[?&](test|debug)\b/.test(location.search);
@@ -44,11 +46,14 @@ const CAST = [
   { name: 'Dot', make: makeDuck, home: world.homes.duck, lines: ['Quack! Oh, sorry. Hello!', 'The lily pond is the best place for a nap.', 'Someone lives inside the Elder Tree. I saw a light!'] },
   { name: 'Biscuit', make: makeDog, home: world.homes.dog, lines: ['Wanna race to the bridge? ...Maybe later.', 'I buried something in the woods. I forget where.', 'Every path out of town goes somewhere good!'] },
   { name: 'Fennel', make: makeFrog, home: world.homes.frog, lines: ['Ribbit. The creek is extra sparkly at noon.', 'The highlands are rocky, but the view is worth it.', 'I collect shiny pebbles. Want to see? No? Okay.'] },
+  ...villageJobs.map((job, index) => ({
+    name: job.villager, make: [makeCat, makeFrog, makeBunny][index], home: job.start, job,
+  })),
 ].map((v, i) => {
   const c = v.make();
   c.ph = i * 1.3;
   scene.add(c.root);
-  return { ...v, c, x: 0, z: 0, ry: 0, state: 'pose', timer: rand(0.5, 3), tx: 0, tz: 0, line: 0, talkT: 0 };
+  return { ...v, c, x: 0, z: 0, ry: 0, state: 'pose', timer: rand(0.5, 3), tx: 0, tz: 0, line: 0 };
 });
 const byName = Object.fromEntries(CAST.map(v => [v.name, v]));
 
@@ -61,7 +66,7 @@ const SPLASH_CAM = { pos: new THREE.Vector3(0, 3.6, 30.5), look: new THREE.Vecto
 const pl = { x: POSE.kid[0], z: POSE.kid[1], y: 0, ry: POSE.kid[2], vx: 0, vz: 0, speed: 0 };
 function setPose(c, x, z, ry) { c.root.position.set(x, groundAt(x, z), z); c.root.rotation.y = ry; }
 setPose(player, pl.x, pl.z, pl.ry);
-for (const v of CAST) { [v.x, v.z, v.ry] = POSE[v.name]; setPose(v.c, v.x, v.z, v.ry); }
+for (const v of CAST) { [v.x, v.z, v.ry] = POSE[v.name] ?? [...v.home, 0]; setPose(v.c, v.x, v.z, v.ry); }
 player.armHold = byName.Mabel.c.armHold = byName.Bruno.c.armHold = true;
 player.arms[-1].rotation.z = -2.55;
 byName.Mabel.c.arms[-1].rotation.z = -2.5;
@@ -101,6 +106,7 @@ let started = false;
 const startKeys = e => { if (!started) { start(); e.preventDefault(); } };
 addEventListener('keydown', e => {
   if (!started) { if (!splash.classList.contains('loading')) startKeys(e); return; }
+  if (document.querySelector('dialog[open]') || e.target instanceof HTMLButtonElement) return;
   keys.add(e.code);
   if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) interact(); e.preventDefault(); }
 });
@@ -147,6 +153,7 @@ canvasEl.addEventListener('wheel', e => zoom(cam.dist + e.deltaY * 0.01), { pass
 $('talk').addEventListener('click', interact);
 
 function readInput() {
+  if (document.querySelector('dialog[open]')) { Object.assign(input, { mx: 0, mz: 0, run: false, turn: 0, zoom: 0 }); return; }
   let mx = 0, mz = 0;
   if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1;
   if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
@@ -172,6 +179,7 @@ function start() {
   cam.yaw = 0; cam.x = pl.x; cam.z = pl.z; cam.y = groundAt(pl.x, pl.z);
   for (const v of CAST) { v.state = 'idle'; v.timer = rand(0.3, 2.5); }
   lastZone = null;
+  refreshProjects();
 }
 
 // ---------- moving ----------
@@ -210,12 +218,25 @@ function updatePlayer(dt) {
 // ---------- villagers ----------
 function updateVillager(v, dt) {
   const dpx = pl.x - v.x, dpz = pl.z - v.z, dp = Math.hypot(dpx, dpz);
-  let speed = 0;
-  if (v.state === 'pose') { /* holding the opening shot */ }
+  if (chat && (chat.a === v || chat.b === v)) {
+    const partner = chat.a === v ? chat.b : chat.a;
+    v.ry = turnTo(v.ry, Math.atan2(partner.x - v.x, partner.z - v.z), Math.min(1, dt * 6));
+    v.c.root.position.y = groundAt(v.x, v.z);
+    v.c.root.rotation.y = v.ry;
+    return 0;
+  }
+  let speed = started ? updateWorker(v, dt) : null;
+  if (speed !== null) {
+    v.c.root.position.set(v.x, groundAt(v.x, v.z), v.z);
+    v.c.root.rotation.y = v.ry;
+    return speed;
+  }
+  speed = 0;
+  if (v.job || v.state === 'pose') { /* holding the opening shot */ }
   else if (dp < 2.8 && started) {
     v.ry = turnTo(v.ry, Math.atan2(dpx, dpz), Math.min(1, dt * 6));
     if (v.state === 'walk') { v.state = 'idle'; v.timer = rand(1, 2); }
-  } else if (v === byName.Bruno && (quest === 'fetch' || quest === 'return')) {
+  } else if (v === byName.Bruno && progress.started && !complete(progress, 'cottage')) {
     // Bruno waits where he gave the player the errand.
   } else if (v.state === 'idle') {
     v.timer -= dt;
@@ -245,55 +266,514 @@ function updateVillager(v, dt) {
 }
 
 // ---------- talking ----------
-const promptEl = $('prompt'), bubble = $('bubble'), talkBtn = $('talk');
+const promptEl = $('prompt'), talkBtn = $('talk');
 const objective = $('objective');
-const objectives = {
-  fetch: 'Follow the east road across Bramble Creek. Pick up the marked logs.',
-  return: 'Bring the wood back to Bruno in the village.',
-  done: 'Bruno’s house is finished. Look for its red roof northwest of the plaza.',
-};
-let quest = 'offer';
+const inventory = $('inventory');
+const album = $('album');
+const progress = loadProgress();
 let near = null, speaking = null;
+const done = name => complete(progress, name);
+const nearPoint = (x, z) => Math.hypot(pl.x - x, pl.z - z) < 2.2;
 
-function setQuest(next) {
-  quest = next;
-  world.wood.visible = next === 'fetch';
-  objective.hidden = false;
-  objective.textContent = objectives[next];
+function refreshProjects(message) {
+  const cottage = done('cottage'), bakery = done('bakery'), beacon = done('beacon');
+  world.showNeighborhood(progress, bakery, done);
+  world.showErrands(progress.errands);
+  world.showProjects(progress.started, cottage, bakery, progress.built.bakery.stone === 3, beacon);
+  for (const node of deposits) {
+    const unlocked = node.id === 'creek' ? progress.started
+      : ['grove', 'quarry', 'meadow-apples', 'cave'].includes(node.id) ? bakery : cottage;
+    world.deposits.get(node.id).visible = unlocked && !progress.gathered.includes(node.id);
+  }
+  inventory.hidden = !started || !progress.started;
+  objective.hidden = !started;
+  const stock = materials.filter(item => progress.inventory[item] > 0)
+    .map(item => progress.inventory[item] + ' ' + item).join(' · ');
+  inventory.textContent = [cottage ? 'Hatchet · Pickaxe' : 'Hatchet', stock].filter(Boolean).join(' | ');
+  const next = !progress.started ? 'Talk to Bruno to help rebuild Willowbend.'
+    : !cottage ? (progress.inventory.planks >= 3 ? 'Bring the planks to Bruno or the cottage northwest of the plaza.'
+      : progress.inventory.wood ? 'Craft planks at Bruno’s temporary bench.' : 'Cross Bramble Creek and cut the marked branches with your hatchet.')
+    : !bakery ? 'Bakery needs ' + remaining(progress, 'bakery') + '. Gather wood in the woods, stone past the bridge, and apples at the orchard.'
+    : !beacon ? 'Beacon needs ' + remaining(progress, 'beacon') + '. Mine copper by Echo Cave and stone in the highlands. Craft a lantern at the workbench.'
+    : progress.opening ? 'Willowbend and the meadow are open. See your group photos in the album.'
+      : 'Plan the new neighborhood at the Meadow Planning board beyond Bramble Creek.';
+  const errands = villageJobs.filter(job => ['active', 'carrying'].includes(progress.errands[job.id]))
+    .map(job => progress.errands[job.id] === 'carrying' ? job.delivery : job.pickup);
+  objective.textContent = [message, next, ...errands].filter(Boolean).join(' ');
+}
+
+function renderAlbum() {
+  const entries = Object.entries(projects).filter(([name]) => progress.photos[name] || progress.photos[name + '-before']);
+  const pages = $('album-pages');
+  pages.replaceChildren();
+  for (const [name, project] of entries) {
+    if (progress.photos[name + '-before']) {
+      appendAlbumPhoto(pages, progress.photos[name + '-before'], project.title + ' · Before construction');
+    }
+    if (progress.photos[name]) appendAlbumPhoto(pages, progress.photos[name], project.title + ' · You, ' + new Intl.ListFormat('en').format(project.villagers));
+  }
+  if (progress.photos.opening) appendAlbumPhoto(pages, progress.photos.opening, 'Meadow opening day · You and the neighbors');
+  if (!pages.children.length) pages.textContent = 'Finish a project to take your first group photo.';
+}
+
+function appendAlbumPhoto(pages, source, label) {
+  const figure = document.createElement('figure');
+  const image = new Image();
+  image.src = source;
+  image.alt = label;
+  const caption = document.createElement('figcaption');
+  caption.textContent = label;
+  const download = document.createElement('a');
+  download.href = source;
+  download.download = label.split(' · ')[0] + '.jpg';
+  download.textContent = 'Save photo';
+  caption.append(' · ', download);
+  figure.append(image, caption);
+  pages.append(figure);
+}
+
+$('open-album').addEventListener('click', () => {
+  keys.clear();
+  renderAlbum();
+  album.showModal();
+});
+function restoreGameFocus() {
+  keys.clear();
+  canvasEl.focus({ preventScroll: true });
+}
+album.addEventListener('close', restoreGameFocus);
+
+function takePhoto(name, project = projects[name]) {
+  if (name in neighborhood) project = plotProject(progress, name);
+  const [x, z] = project.site;
+  const [ax, az] = project.photoSpot ?? project.approach;
+  const forward = new THREE.Vector3(ax - x, 0, az - z).normalize();
+  const right = new THREE.Vector3(forward.z, 0, -forward.x);
+  const group = [makeKid(), ...project.villagers.map(villager => byName[villager].make())];
+  const portrait = new THREE.PerspectiveCamera(name === 'beacon' ? 55 : 41, 1.5, 0.5, 900);
+  const distance = name === 'opening' ? 10 : 7;
+  portrait.position.set(ax + forward.x * distance, groundAt(ax, az) + 3.6, az + forward.z * distance);
+  portrait.lookAt(ax - forward.x * 0.9, groundAt(ax, az) + (name === 'beacon' ? 3.3 : 1.8), az - forward.z * 0.9);
+  const actors = [player, ...CAST.map(v => v.c)];
+  actors.forEach(actor => { actor.root.visible = false; });
+  try {
+    for (const [index, actor] of group.entries()) {
+      const offset = (index - (group.length - 1) / 2) * 1.18;
+      const px = ax + right.x * offset, pz = az + right.z * offset;
+      setPose(actor, px, pz, Math.atan2(forward.x, forward.z));
+      scene.add(actor.root);
+    }
+    renderer.setPixelRatio(1);
+    renderer.setSize(720, 480, false);
+    renderer.render(scene, portrait);
+    const photo = document.createElement('canvas');
+    const source = renderer.domElement;
+    const scale = Math.min(1, 720 / Math.max(source.width, source.height));
+    photo.width = Math.round(source.width * scale);
+    photo.height = Math.round(source.height * scale);
+    photo.getContext('2d').drawImage(source, 0, 0, photo.width, photo.height);
+    progress.photos[name] = photo.toDataURL('image/jpeg', 0.82);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    group.forEach(actor => scene.remove(actor.root));
+    actors.forEach(actor => { actor.root.visible = true; });
+    resize();
+    renderer.render(scene, camera);
+  }
+}
+
+function commitProgress(message) {
+  if (!saveProgress(progress)) message += ' Device storage is unavailable. Progress is kept for this session.';
+  refreshProjects(message);
+}
+
+function build(name) {
+  const added = contribute(progress, name);
+  if (!added.length) return refreshProjects('Still needed: ' + remaining(progress, name) + '.');
+  if (!done(name)) return commitProgress('Delivered ' + added.join(', ') + '.');
+  refreshProjects();
+  const photographed = takePhoto(name);
+  commitProgress(projects[name].title + ' is finished!' + (photographed ? ' Group photo added to the album.' : ' The group photo could not be captured.'));
+}
+
+const planner = $('planner');
+planner.addEventListener('close', restoreGameFocus);
+const workers = { Pip: 'Deliver apples', Bruno: 'Haul timber' };
+const workRoutes = {
+  Pip: [[48, -24], [50, -25.5], meadowBoard],
+  Bruno: [[47, -31], [47, -27.5], [50, -25.5], meadowBoard],
+};
+const villagerCargoGeometry = {
+  Pip: new THREE.SphereGeometry(0.19, 12, 8),
+  Bruno: new THREE.BoxGeometry(0.65, 0.2, 0.23),
+};
+const villagerCargoMaterials = {
+  Pip: new THREE.MeshToonMaterial({ color: 0xdc5346 }),
+  Bruno: new THREE.MeshToonMaterial({ color: 0xa9794a }),
+};
+const nextStop = {};
+
+function openPlanner() {
+  keys.clear();
+  renderPlanner();
+  planner.showModal();
+}
+
+function plannerButton(parent, label, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'pill';
+  button.textContent = label;
+  button.addEventListener('click', action);
+  parent.append(button);
+}
+
+function renderPlanner() {
+  const sites = $('meadow-sites');
+  sites.replaceChildren();
+  for (const [index] of plots.entries()) {
+    const section = document.createElement('section');
+    const title = document.createElement('strong');
+    const choice = Object.keys(neighborhood).find(name => progress.plots[name] === index);
+    title.textContent = 'Plot ' + (index + 1) + (choice ? ' · ' + projects[choice].title : '');
+    section.append(title);
+    if (choice) {
+      const details = document.createElement('p');
+      details.textContent = done(choice) ? 'Finished' : 'Still needed: ' + remaining(progress, choice);
+      section.append(details);
+    } else for (const [name, project] of Object.entries(neighborhood)) {
+      if (name in progress.plots) continue;
+      plannerButton(section, project.title, () => {
+        const [x, z] = plots[index];
+        const view = { ...project, site: [x, z], approach: [x, z + 3.2] };
+        takePhoto(name + '-before', view);
+        progress.plots[name] = index;
+        commitProgress('Foundation placed on plot ' + (index + 1) + '.');
+        renderPlanner();
+      });
+    }
+    sites.append(section);
+  }
+  const jobs = $('meadow-jobs');
+  jobs.replaceChildren();
+  for (const [villager, job] of Object.entries(workers)) {
+    const required = villager === 'Pip' ? 'bakehouse' : 'workshop';
+    if (!done(required)) continue;
+    if (progress.jobs[villager]) {
+      const line = document.createElement('p');
+      line.textContent = villager + (progress.jobs[villager] === 'delivered' ? ' finished the first delivery.' : ' is on the delivery route.');
+      jobs.append(line);
+    } else plannerButton(jobs, villager + ' · ' + job, () => {
+      progress.jobs[villager] = 'working';
+      commitProgress(villager + ' started the first delivery.');
+      renderPlanner();
+    });
+  }
+  const event = $('meadow-event');
+  event.replaceChildren();
+  if (!progress.opening && Object.keys(neighborhood).every(done) && Object.keys(workers).every(name => progress.jobs[name] === 'delivered')) {
+    plannerButton(event, 'Celebrate opening day', () => {
+      const home = plotProject(progress, 'bakehouse');
+      if (takePhoto('opening', { ...home, villagers: ['Bruno', 'Pip', 'Dot', 'Mabel', 'Fennel'] })) {
+        progress.opening = true;
+        commitProgress('Opening day photo added to the album.');
+        planner.close();
+      }
+    });
+  }
+}
+
+function updateWorker(v, dt) {
+  const worker = progress.jobs[v.name];
+  if (!worker) return null;
+  const destination = plotProject(progress, v.name === 'Pip' ? 'bakehouse' : 'workshop').approach;
+  if (worker === 'delivered') {
+    if (v.cargo) v.cargo.visible = false;
+    [v.x, v.z] = destination;
+    return 0;
+  }
+  const route = workRoutes[v.name];
+  if (!(v.name in nextStop)) {
+    [v.x, v.z] = route[0];
+    nextStop[v.name] = 1;
+    v.cargo = new THREE.Mesh(
+      villagerCargoGeometry[v.name],
+      villagerCargoMaterials[v.name],
+    );
+    v.cargo.position.set(0, 0.8, 0.52);
+    v.c.root.add(v.cargo);
+  }
+  const [x, z] = route[nextStop[v.name]] ?? destination;
+  const dx = x - v.x, dz = z - v.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance < 0.2) {
+    if (nextStop[v.name] < route.length) nextStop[v.name]++;
+    else {
+      progress.jobs[v.name] = 'delivered';
+      if (v.name === 'Pip') progress.inventory.apples += 2;
+      else progress.inventory.wood += 2;
+      commitProgress(v.name + ' delivered the first supplies.');
+      if (planner.open) renderPlanner();
+    }
+    return 0;
+  }
+  v.ry = Math.atan2(dx, dz);
+  const step = Math.min(distance, dt * 2.4);
+  v.x += dx * step / distance;
+  v.z += dz * step / distance;
+  return 2.4;
+}
+
+function craft() {
+  const stock = progress.inventory;
+  if (stock.wood) {
+    const count = stock.wood;
+    stock.planks += count;
+    stock.wood = 0;
+    commitProgress('Crafted ' + count + ' planks.');
+  } else if (done('bakery') && stock.copper >= 2 && !stock.lantern && !done('beacon')) {
+    stock.copper -= 2;
+    stock.lantern++;
+    commitProgress('Crafted the beacon lantern.');
+  } else {
+    refreshProjects(done('bakery') ? 'Workbench recipes: wood makes planks, and 2 copper makes a lantern.' : 'Bring wood to craft planks.');
+  }
+}
+
+function nearbyAction() {
+  if (!started) return null;
+  for (const job of villageJobs) {
+    if (progress.errands[job.id] !== 'active' || !nearPoint(...job.stop)) continue;
+    const [x, z] = job.stop;
+    return { position: { x, y: groundAt(x, z), z }, label: job.pickup, run() {
+      progress.errands[job.id] = 'carrying';
+      commitProgress('Collected ' + job.cargo + '.');
+    } };
+  }
+  if (!progress.started) return null;
+  for (const node of deposits) {
+    const prop = world.deposits.get(node.id);
+    if (!prop.visible || !nearPoint(node.x, node.z)) continue;
+    const label = node.tool ? (node.tool === 'Hatchet' ? 'Chop ' : 'Mine ') + node.name : 'Harvest apples';
+    return { position: prop.position, label, run() {
+      progress.inventory[node.kind] += node.amount;
+      progress.gathered.push(node.id);
+      commitProgress('Gathered ' + node.amount + ' ' + node.kind + '.');
+    } };
+  }
+  if (done('bakery') && nearPoint(...meadowBoard)) {
+    const [x, z] = meadowBoard;
+    return { position: { x, y: groundAt(x, z), z }, label: 'Plan neighborhood', run: openPlanner };
+  }
+  const workshop = done('workshop') ? plotProject(progress, 'workshop').approach : null;
+  const station = nearPoint(...workbench) ? workbench : workshop && nearPoint(...workshop) ? workshop : null;
+  if (station && (!workshop || station === workbench || progress.inventory.wood)) {
+    const [x, z] = station;
+    return { position: { x, y: groundAt(x, z), z }, label: 'Craft at workbench', run: craft };
+  }
+  for (const [name, project] of Object.entries(projects)) {
+    if (!project.needs || (name in neighborhood && !(name in progress.plots))) continue;
+    const [x, z] = name in neighborhood ? plotProject(progress, name).approach : project.approach;
+    if (done(name) || (name === 'bakery' && !done('cottage')) || (name === 'beacon' && !done('bakery')) || !nearPoint(x, z)) continue;
+    return { position: { x, y: groundAt(x, z), z }, label: 'Build ' + project.title, run: () => build(name) };
+  }
+  return null;
 }
 
 function brunoLine() {
-  if (quest === 'offer') {
-    setQuest('fetch');
-    return 'Could you bring me a bundle of wood? Take the east road over Bramble Creek. I marked the logs just past the bridge.';
+  if (!progress.started) {
+    progress.started = true;
+    commitProgress('Bruno lent you a hatchet.');
+    return 'Take my hatchet across Bramble Creek. Chop the marked branches, then bring the wood to my bench northwest of the plaza.';
   }
-  if (quest === 'fetch') return 'Look for my sign by the logs on the far side of the bridge.';
-  if (quest === 'return') {
-    world.finishHouse();
-    setQuest('done');
-    return 'You found it! The house is finished. Come see it northwest of the plaza!';
+  if (!done('cottage') && progress.inventory.planks) {
+    build('cottage');
+    return 'Thanks for bringing the planks!';
   }
-  return 'Thanks for helping me finish the house!';
+  if (!done('cottage')) return 'My bench is northwest of the plaza, next to the cottage frame. I need three planks.';
+  if (!done('bakery')) return 'Your pickaxe is ready. Pip left an apple basket at the orchard. The bakery frame is southeast of the plaza.';
+  if (!done('beacon')) return 'Dot spotted copper at Echo Cave. Bring two pieces to the workbench to craft the lantern.';
+  return 'The beacon is shining. Look how far we’ve come!';
 }
 
-function nearWood() {
-  const { x, z } = world.wood.position;
-  return world.wood.visible && Math.hypot(pl.x - x, pl.z - z) < 2.2;
+function villagerLine(villager) {
+  const job = villager.job;
+  if (job) {
+    const state = progress.errands[job.id];
+    if (state === 'done') return 'Thanks for helping with my stall. See you around town!';
+    if (state === 'carrying') {
+      progress.errands[job.id] = 'done';
+      refreshProjects();
+      const photographed = takePhoto(job.id);
+      commitProgress(job.title + ' completed.' + (photographed ? ' Group photo added.' : ''));
+      return 'Thanks! We did it together.';
+    }
+    if (state !== 'active') {
+      progress.errands[job.id] = 'active';
+      commitProgress(job.title + ' started.');
+    }
+    return job.line;
+  }
+  if (villager === byName.Bruno) return brunoLine();
+  if (progress.started && !done('cottage') && villager.name === 'Mabel') {
+    return 'I marked the fallen branches for Bruno. They’re just past Bramble Creek bridge.';
+  }
+  if (done('cottage') && !done('bakery') && villager.name === 'Pip') {
+    return 'I picked apples for the bakery! My basket is at the north edge of the orchard.';
+  }
+  if (done('bakery') && !done('beacon')) {
+    if (villager.name === 'Dot') return 'I saw copper glinting near the entrance to Echo Cave.';
+    if (villager.name === 'Fennel') return 'I marked loose stone near the path through Pebble Highlands.';
+  }
+  return villager.lines[villager.line++ % villager.lines.length];
 }
+
+const conversation = $('conversation');
+let chat = null, chatDelay = 2, lastPair = '';
+const overheard = [];
+const heardTopics = new Map();
+
+function activeJobs() {
+  const errands = villageJobs.flatMap(job => {
+    const state = progress.errands[job.id];
+    return state === 'active' ? [job.pickup] : state === 'carrying' ? [job.delivery] : [];
+  });
+  if (progress.started && !done('beacon')) {
+    if (!done('cottage')) errands.push(progress.inventory.planks ? 'Deliver planks for Bruno’s cottage' : progress.inventory.wood ? 'Craft planks at Bruno’s workbench' : 'Gather branches across Bramble Creek');
+    else if (!done('bakery')) errands.push('Finish the village bakery with ' + remaining(progress, 'bakery'));
+    else errands.push('Finish the watchtower beacon with ' + remaining(progress, 'beacon'));
+  }
+  for (const name of Object.keys(progress.plots)) {
+    if (!done(name)) errands.push('Build the ' + projects[name].title.toLowerCase() + ' with ' + remaining(progress, name));
+  }
+  for (const [name, state] of Object.entries(progress.jobs)) {
+    if (state === 'working') errands.push('Check on ' + name + '’s meadow delivery');
+  }
+  return errands;
+}
+
+function jobReply(jobs) {
+  return jobs.length ? 'Here’s what you’re working on. ' + jobs.join('. ') + '.'
+    : 'You have no jobs underway. Ask Hazel at Farmgate Market, Reed by the pond, or Clover by the orchard.';
+}
+
+function openConversation(villager) {
+  speaking = villager;
+  keys.clear();
+  chat = null;
+  $('chatter').hidden = true;
+  chatDelay = 2;
+  $('conversation-name').textContent = villager.name;
+  const words = $('conversation-reply');
+  const choices = $('conversation-topics');
+  const jobs = activeJobs();
+  const first = topics[villager.name][0];
+  words.textContent = jobs.length ? 'You’re in the middle of ' + jobs.length + (jobs.length === 1 ? ' job' : ' jobs') + '. ' + jobReply(jobs)
+    : 'Good to see you. What would you like to talk about?';
+  choices.replaceChildren();
+  const option = (label, reply) => plannerButton(choices, label, () => { words.textContent = reply(); });
+  option('How’s life in Willowbend?', () => first);
+  option('Where should I go?', () => topics[villager.name][1]);
+  option('Active jobs', () => jobReply(activeJobs()));
+  if (villager.job || villager === byName.Bruno) {
+    const job = villager.job;
+    const state = job && progress.errands[job.id];
+    const label = state === 'carrying' ? job.delivery : job && !state ? 'Start job · ' + job.title
+      : job ? 'Talk about ' + job.title.toLowerCase() : 'Talk about rebuilding';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pill';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      words.textContent = villagerLine(villager);
+      button.disabled = true;
+    });
+    choices.append(button);
+  } else option('What’s new?', () => villagerLine(villager));
+  option('Village news', () => progress.opening ? 'The meadow neighborhood is open. Everyone’s talking about the opening-day photograph.'
+    : done('bakery') ? 'The bakery is open. The next big thing is the neighborhood across Bramble Creek.'
+    : 'Bruno is looking for help rebuilding. Hazel, Reed, and Clover also have work available.');
+  if (overheard.length) option('What have people been saying?', () => overheard.slice(-3).join(' '));
+  conversation.showModal();
+}
+
+conversation.addEventListener('close', () => {
+  speaking = null;
+  restoreGameFocus();
+});
 
 function interact() {
-  if (!started) return;
-  if (nearWood()) {
-    setQuest('return');
+  if (!started || document.querySelector('dialog[open]')) return;
+  const action = nearbyAction();
+  if (action) return action.run();
+  if (near) openConversation(near);
+}
+
+function updateChatter(dt) {
+  const panel = $('chatter');
+  if (!started || document.querySelector('dialog[open]')) {
+    panel.hidden = true;
     return;
   }
-  if (!near) return;
-  speaking = near;
-  near.talkT = near === byName.Bruno ? 7 : 4.5;
-  bubble.querySelector('.who').textContent = near.name;
-  bubble.querySelector('.say').textContent = near === byName.Bruno ? brunoLine() : near.lines[near.line++ % near.lines.length];
-  near.c.root.userData.hop = 0.35;
+  if (!chat) {
+    chatDelay -= dt;
+    if (chatDelay > 0) return;
+    const nearby = CAST.filter(v => progress.jobs[v.name] !== 'working' && Math.hypot(v.x - pl.x, v.z - pl.z) < 16);
+    for (const a of nearby) {
+      const b = nearby.find(candidate => candidate !== a && Math.hypot(candidate.x - a.x, candidate.z - a.z) < 8 &&
+        [a.name, candidate.name].sort().join('/') !== lastPair);
+      if (!b) continue;
+      const key = [a.name, b.name].sort().join('/');
+      const initiator = (heardTopics.get(key) ?? 0) % 2 ? b : a;
+      const partner = initiator === a ? b : a;
+      heardTopics.set(key, (heardTopics.get(key) ?? 0) + 1);
+      const topics = [chatter[initiator.name], [
+        'Has anyone checked the pond trail lately?',
+        progress.errands.pond === 'done' ? 'Reed has a fresh report at the shelter.' : 'Reed was looking for someone to check the dock marker.',
+        'I’ll stop by the shelter next time I’m out that way.',
+      ], [
+        'Any news from across the creek?',
+        progress.opening ? 'The meadow is open. I hope there’s still something left at the bakehouse.' :
+          done('bakery') ? 'There are building lots near Meadow Rest. The planning board has the details.' : 'Bruno is still getting the village buildings ready.',
+        'I’ll follow the bridge road and see for myself.',
+      ]];
+      const visit = heardTopics.get(key) - 1;
+      chat = { a: initiator, b: partner, lines: topics[visit % topics.length], turn: 0, left: 0 };
+      lastPair = key;
+      break;
+    }
+    if (!chat) { chatDelay = 2; return; }
+  }
+  if (Math.hypot(chat.a.x - pl.x, chat.a.z - pl.z) > 20 || progress.jobs[chat.a.name] === 'working' || progress.jobs[chat.b.name] === 'working') {
+    chat = null;
+    panel.hidden = true;
+    chatDelay = 2;
+    return;
+  }
+  chat.left -= dt;
+  if (chat.left <= 0) {
+    if (chat.turn === chat.lines.length) {
+      chat = null;
+      panel.hidden = true;
+      chatDelay = 3;
+      return;
+    }
+    const speaker = chat.turn % 2 ? chat.b : chat.a;
+    const line = chat.lines[chat.turn++];
+    const caption = speaker.name + ' · ' + line;
+    panel.textContent = caption;
+    panel.hidden = false;
+    overheard.push(caption);
+    if (overheard.length > 9) overheard.shift();
+    speaker.c.root.userData.hop = 0.35;
+    chat.left = Math.max(2.6, line.length / 19);
+  }
 }
+
+refreshProjects();
+
 const proj = new THREE.Vector3();
 function screenAt(x, y, z) {
   proj.set(x, y, z).project(camera);
@@ -303,22 +783,13 @@ function updateTalk(dt) {
   near = null;
   let best = 2.6;
   if (started) for (const v of CAST) { const d = Math.hypot(v.x - pl.x, v.z - pl.z); if (d < best) { best = d; near = v; } }
-  const collect = started && nearWood();
-  talkBtn.classList.toggle('near', !!near || collect);
-  talkBtn.textContent = collect ? 'Pick up' : 'Talk';
-  if (speaking) {
-    speaking.talkT -= dt;
-    if (speaking.talkT <= 0 || Math.hypot(speaking.x - pl.x, speaking.z - pl.z) > 4.5) speaking = null;
-  }
-  if (speaking) {
-    const p = screenAt(speaking.x, speaking.c.root.position.y + 2.6, speaking.z);
-    bubble.style.display = p.on ? 'block' : 'none';
-    bubble.style.left = p.x + 'px'; bubble.style.top = p.y + 'px';
-  } else bubble.style.display = 'none';
-  if (collect || (near && near !== speaking)) {
-    const target = collect ? world.wood.position : near.c.root.position;
-    const p = screenAt(target.x, target.y + (collect ? 1.5 : 2.5), target.z);
-    const label = collect ? 'Pick up wood' : 'Talk to ' + near.name;
+  const action = nearbyAction();
+  talkBtn.classList.toggle('near', !!near || !!action);
+  talkBtn.textContent = action ? action.label.split(' ')[0] : 'Talk';
+  if (action || (near && !conversation.open)) {
+    const target = action ? action.position : near.c.root.position;
+    const p = screenAt(target.x, target.y + (action ? 1.5 : 2.5), target.z);
+    const label = action ? action.label : 'Talk to ' + near.name;
     promptEl.textContent = touch ? label : 'Space · ' + label;
     promptEl.style.display = p.on ? 'block' : 'none';
     promptEl.style.left = p.x + 'px'; promptEl.style.top = p.y + 'px';
@@ -369,6 +840,7 @@ function update(dt) {
     byName.Bruno.c.arms[1].rotation.z = 2.35 + Math.sin(time * 9) * 0.25;
   }
   updateTalk(dt);
+  updateChatter(dt);
   updateZone(dt);
 
   if (cam.mode !== 'splash') {
@@ -395,7 +867,7 @@ if (TEST) {
   window.WB = {
     start,
     info: () => ({
-      started, houseFinished: world.house.visible, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
+      started, houseFinished: world.house.visible, progress: { inventory: { ...progress.inventory }, gathered: [...progress.gathered], built: structuredClone(progress.built), photos: Object.keys(progress.photos), plots: { ...progress.plots }, jobs: { ...progress.jobs }, opening: progress.opening, errands: { ...progress.errands } }, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
       speaking: speaking?.name ?? null, yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
       villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state })),
     }),
@@ -412,6 +884,14 @@ if (TEST) {
     lookAt(x, z) { cam.yaw = Math.atan2(-(x - pl.x), -(z - pl.z)); cam.x = pl.x; cam.z = pl.z; cam.y = groundAt(pl.x, pl.z); },
     walkable: (x, z) => walkable(x, z),
     height, WATER,
+    positionVillager(name, x, z) {
+      const v = byName[name];
+      v.x = x;
+      v.z = z;
+      v.state = 'idle';
+      v.timer = 20;
+      setPose(v.c, x, z, v.ry);
+    },
     villager: name => { const v = byName[name]; return { x: v.x, z: v.z }; },
     tris() {
       const by = {};
