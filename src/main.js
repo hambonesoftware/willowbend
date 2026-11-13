@@ -1,3 +1,4 @@
+import { topics, chatter } from './dialogue.js';
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
 import { makeKid, makeCat, makeBunny, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
@@ -52,7 +53,7 @@ const CAST = [
   const c = v.make();
   c.ph = i * 1.3;
   scene.add(c.root);
-  return { ...v, c, x: 0, z: 0, ry: 0, state: 'pose', timer: rand(0.5, 3), tx: 0, tz: 0, line: 0, talkT: 0 };
+  return { ...v, c, x: 0, z: 0, ry: 0, state: 'pose', timer: rand(0.5, 3), tx: 0, tz: 0, line: 0 };
 });
 const byName = Object.fromEntries(CAST.map(v => [v.name, v]));
 
@@ -217,6 +218,13 @@ function updatePlayer(dt) {
 // ---------- villagers ----------
 function updateVillager(v, dt) {
   const dpx = pl.x - v.x, dpz = pl.z - v.z, dp = Math.hypot(dpx, dpz);
+  if (chat && (chat.a === v || chat.b === v)) {
+    const partner = chat.a === v ? chat.b : chat.a;
+    v.ry = turnTo(v.ry, Math.atan2(partner.x - v.x, partner.z - v.z), Math.min(1, dt * 6));
+    v.c.root.position.y = groundAt(v.x, v.z);
+    v.c.root.rotation.y = v.ry;
+    return 0;
+  }
   let speed = started ? updateWorker(v, dt) : null;
   if (speed !== null) {
     v.c.root.position.set(v.x, groundAt(v.x, v.z), v.z);
@@ -258,7 +266,7 @@ function updateVillager(v, dt) {
 }
 
 // ---------- talking ----------
-const promptEl = $('prompt'), bubble = $('bubble'), talkBtn = $('talk');
+const promptEl = $('prompt'), talkBtn = $('talk');
 const objective = $('objective');
 const inventory = $('inventory');
 const album = $('album');
@@ -620,17 +628,149 @@ function villagerLine(villager) {
   return villager.lines[villager.line++ % villager.lines.length];
 }
 
+const conversation = $('conversation');
+let chat = null, chatDelay = 2, lastPair = '';
+const overheard = [];
+const heardTopics = new Map();
+
+function activeJobs() {
+  const errands = villageJobs.flatMap(job => {
+    const state = progress.errands[job.id];
+    return state === 'active' ? [job.pickup] : state === 'carrying' ? [job.delivery] : [];
+  });
+  if (progress.started && !done('beacon')) {
+    if (!done('cottage')) errands.push(progress.inventory.planks ? 'Deliver planks for Bruno’s cottage' : progress.inventory.wood ? 'Craft planks at Bruno’s workbench' : 'Gather branches across Bramble Creek');
+    else if (!done('bakery')) errands.push('Finish the village bakery with ' + remaining(progress, 'bakery'));
+    else errands.push('Finish the watchtower beacon with ' + remaining(progress, 'beacon'));
+  }
+  for (const name of Object.keys(progress.plots)) {
+    if (!done(name)) errands.push('Build the ' + projects[name].title.toLowerCase() + ' with ' + remaining(progress, name));
+  }
+  for (const [name, state] of Object.entries(progress.jobs)) {
+    if (state === 'working') errands.push('Check on ' + name + '’s meadow delivery');
+  }
+  return errands;
+}
+
+function jobReply(jobs) {
+  return jobs.length ? 'Here’s what you’re working on. ' + jobs.join('. ') + '.'
+    : 'You have no jobs underway. Ask Hazel at Farmgate Market, Reed by the pond, or Clover by the orchard.';
+}
+
+function openConversation(villager) {
+  speaking = villager;
+  keys.clear();
+  chat = null;
+  $('chatter').hidden = true;
+  chatDelay = 2;
+  $('conversation-name').textContent = villager.name;
+  const words = $('conversation-reply');
+  const choices = $('conversation-topics');
+  const jobs = activeJobs();
+  const first = topics[villager.name][0];
+  words.textContent = jobs.length ? 'You’re in the middle of ' + jobs.length + (jobs.length === 1 ? ' job' : ' jobs') + '. ' + jobReply(jobs)
+    : 'Good to see you. What would you like to talk about?';
+  choices.replaceChildren();
+  const option = (label, reply) => plannerButton(choices, label, () => { words.textContent = reply(); });
+  option('How’s life in Willowbend?', () => first);
+  option('Where should I go?', () => topics[villager.name][1]);
+  option('Active jobs', () => jobReply(activeJobs()));
+  if (villager.job || villager === byName.Bruno) {
+    const job = villager.job;
+    const state = job && progress.errands[job.id];
+    const label = state === 'carrying' ? job.delivery : job && !state ? 'Start job · ' + job.title
+      : job ? 'Talk about ' + job.title.toLowerCase() : 'Talk about rebuilding';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pill';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      words.textContent = villagerLine(villager);
+      button.disabled = true;
+    });
+    choices.append(button);
+  } else option('What’s new?', () => villagerLine(villager));
+  option('Village news', () => progress.opening ? 'The meadow neighborhood is open. Everyone’s talking about the opening-day photograph.'
+    : done('bakery') ? 'The bakery is open. The next big thing is the neighborhood across Bramble Creek.'
+    : 'Bruno is looking for help rebuilding. Hazel, Reed, and Clover also have work available.');
+  if (overheard.length) option('What have people been saying?', () => overheard.slice(-3).join(' '));
+  conversation.showModal();
+}
+
+conversation.addEventListener('close', () => {
+  keys.clear();
+  speaking = null;
+  talkBtn.blur();
+});
+
 function interact() {
   if (!started || document.querySelector('dialog[open]')) return;
   const action = nearbyAction();
   if (action) return action.run();
-  if (!near) return;
-  speaking = near;
-  near.talkT = near === byName.Bruno ? 7 : 4.5;
-  bubble.querySelector('.who').textContent = near.name;
-  bubble.querySelector('.say').textContent = villagerLine(near);
-  near.c.root.userData.hop = 0.35;
+  if (near) openConversation(near);
 }
+
+function updateChatter(dt) {
+  const panel = $('chatter');
+  if (!started || document.querySelector('dialog[open]')) {
+    panel.hidden = true;
+    return;
+  }
+  if (!chat) {
+    chatDelay -= dt;
+    if (chatDelay > 0) return;
+    const nearby = CAST.filter(v => progress.jobs[v.name] !== 'working' && Math.hypot(v.x - pl.x, v.z - pl.z) < 16);
+    for (const a of nearby) {
+      const b = nearby.find(candidate => candidate !== a && Math.hypot(candidate.x - a.x, candidate.z - a.z) < 8 &&
+        [a.name, candidate.name].sort().join('/') !== lastPair);
+      if (!b) continue;
+      const key = [a.name, b.name].sort().join('/');
+      const initiator = (heardTopics.get(key) ?? 0) % 2 ? b : a;
+      const partner = initiator === a ? b : a;
+      heardTopics.set(key, (heardTopics.get(key) ?? 0) + 1);
+      const topics = [chatter[initiator.name], [
+        'Has anyone checked the pond trail lately?',
+        progress.errands.pond === 'done' ? 'Reed has a fresh report at the shelter.' : 'Reed was looking for someone to check the dock marker.',
+        'I’ll stop by the shelter next time I’m out that way.',
+      ], [
+        'Any news from across the creek?',
+        progress.opening ? 'The meadow is open. I hope there’s still something left at the bakehouse.' :
+          done('bakery') ? 'There are building lots near Meadow Rest. The planning board has the details.' : 'Bruno is still getting the village buildings ready.',
+        'I’ll follow the bridge road and see for myself.',
+      ]];
+      const visit = heardTopics.get(key) - 1;
+      chat = { a: initiator, b: partner, lines: topics[visit % topics.length], turn: 0, left: 0 };
+      lastPair = key;
+      break;
+    }
+    if (!chat) { chatDelay = 2; return; }
+  }
+  if (Math.hypot(chat.a.x - pl.x, chat.a.z - pl.z) > 20 || progress.jobs[chat.a.name] === 'working' || progress.jobs[chat.b.name] === 'working') {
+    chat = null;
+    panel.hidden = true;
+    chatDelay = 2;
+    return;
+  }
+  chat.left -= dt;
+  if (chat.left <= 0) {
+    if (chat.turn === chat.lines.length) {
+      chat = null;
+      panel.hidden = true;
+      chatDelay = 3;
+      return;
+    }
+    const speaker = chat.turn % 2 ? chat.b : chat.a;
+    const line = chat.lines[chat.turn++];
+    const caption = speaker.name + ' · ' + line;
+    panel.textContent = caption;
+    panel.hidden = false;
+    overheard.push(caption);
+    if (overheard.length > 9) overheard.shift();
+    speaker.c.root.userData.hop = 0.35;
+    chat.left = Math.max(2.6, line.length / 19);
+  }
+}
+
 refreshProjects();
 
 const proj = new THREE.Vector3();
@@ -645,16 +785,7 @@ function updateTalk(dt) {
   const action = nearbyAction();
   talkBtn.classList.toggle('near', !!near || !!action);
   talkBtn.textContent = action ? action.label.split(' ')[0] : 'Talk';
-  if (speaking) {
-    speaking.talkT -= dt;
-    if (speaking.talkT <= 0 || Math.hypot(speaking.x - pl.x, speaking.z - pl.z) > 4.5) speaking = null;
-  }
-  if (speaking) {
-    const p = screenAt(speaking.x, speaking.c.root.position.y + 2.6, speaking.z);
-    bubble.style.display = p.on ? 'block' : 'none';
-    bubble.style.left = p.x + 'px'; bubble.style.top = p.y + 'px';
-  } else bubble.style.display = 'none';
-  if (action || (near && near !== speaking)) {
+  if (action || (near && !conversation.open)) {
     const target = action ? action.position : near.c.root.position;
     const p = screenAt(target.x, target.y + (action ? 1.5 : 2.5), target.z);
     const label = action ? action.label : 'Talk to ' + near.name;
@@ -708,6 +839,7 @@ function update(dt) {
     byName.Bruno.c.arms[1].rotation.z = 2.35 + Math.sin(time * 9) * 0.25;
   }
   updateTalk(dt);
+  updateChatter(dt);
   updateZone(dt);
 
   if (cam.mode !== 'splash') {
@@ -751,6 +883,14 @@ if (TEST) {
     lookAt(x, z) { cam.yaw = Math.atan2(-(x - pl.x), -(z - pl.z)); cam.x = pl.x; cam.z = pl.z; cam.y = groundAt(pl.x, pl.z); },
     walkable: (x, z) => walkable(x, z),
     height, WATER,
+    positionVillager(name, x, z) {
+      const v = byName[name];
+      v.x = x;
+      v.z = z;
+      v.state = 'idle';
+      v.timer = 20;
+      setPose(v.c, x, z, v.ry);
+    },
     villager: name => { const v = byName[name]; return { x: v.x, z: v.z }; },
     tris() {
       const by = {};

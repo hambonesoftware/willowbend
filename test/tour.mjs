@@ -86,6 +86,7 @@ if (only !== 'route') {
   s = await info(page);
   check(s.speaking === 'Mabel', 'Space starts the chat');
   await shot(page, '04-talk');
+  await page.getByRole('button', { name: 'Goodbye' }).click();
 
   // the bridge carries you over the creek; the creek stops you anywhere else
   await page.evaluate(() => { window.WB.warp(19.5, -21); window.WB.lookAt(19.5, -30); window.WB.sim(0.1); });
@@ -198,8 +199,14 @@ if (!only || only === 'route') {
       window.WB.lookAt(x, z);
       window.WB.sim(0.2);
     });
+    const conversation = page.locator('#conversation');
+    const choose = async label => {
+      await conversation.getByRole('button', { name: label }).click();
+      await conversation.getByRole('button', { name: 'Goodbye' }).click();
+    };
     await approachBruno();
     await page.keyboard.press('Space');
+    await choose('Talk about rebuilding');
     const objective = page.locator('#objective');
     await objective.waitFor({ state: 'visible', timeout: 5000 });
     const visit = async (x, z, label) => {
@@ -211,6 +218,35 @@ if (!only || only === 'route') {
       check(walkable, label + ' approach is walkable');
       await page.keyboard.press('Space');
     };
+    await page.evaluate(() => {
+      const { x, z } = window.WB.villager('Mabel');
+      window.WB.warp(x, z + 1);
+      window.WB.sim(0.25);
+    });
+    await page.keyboard.press('Space');
+    check((await conversation.locator('#conversation-reply').textContent()).includes('Bramble Creek'),
+      'a different villager notices the active cottage job');
+    await conversation.getByRole('button', { name: 'Where should I go?' }).click();
+    check((await conversation.locator('#conversation-reply').textContent()).includes('east road'),
+      'direction topic gives a personal answer');
+    await conversation.getByRole('button', { name: 'Active jobs' }).click();
+    check((await conversation.locator('#conversation-reply').textContent()).includes('Gather branches'),
+      'active jobs topic repeats the next step without changing progress');
+    await conversation.getByRole('button', { name: 'Goodbye' }).click();
+    const voices = await page.evaluate(() => {
+      window.WB.warp(4, 4);
+      window.WB.positionVillager('Mabel', 5, 4);
+      window.WB.positionVillager('Biscuit', 7, 4);
+      const voices = new Set();
+      for (let i = 0; i < 7; i++) {
+        window.WB.sim(2);
+        const panel = document.getElementById('chatter');
+        if (!panel.hidden) voices.add(panel.textContent.split(' · ')[0]);
+      }
+      return voices.size;
+    });
+    check(voices >= 2, 'villagers exchange lines with at least two speakers');
+
     check((await objective.textContent()).includes('Bramble Creek'), 'Bruno lends the hatchet and gives directions');
     await visit(46, -22, 'creek wood');
     check((await info(page)).progress.inventory.wood === 3, 'hatchet yields wood');
@@ -244,10 +280,12 @@ if (!only || only === 'route') {
       ['orchard', [-28, 2], [-36, 1]],
     ]) {
       await visit(...host, id + ' host');
+      await choose(/^Start job/);
       check((await info(page)).progress.errands[id] === 'active', id + ' job starts through dialogue');
       await visit(...stop, id + ' pickup');
       check((await info(page)).progress.errands[id] === 'carrying', id + ' job records its pickup');
       await visit(...host, id + ' delivery');
+      await choose(/^(Deliver|Report back)/);
       check((await info(page)).progress.errands[id] === 'done', id + ' job completes through dialogue');
     }
 
