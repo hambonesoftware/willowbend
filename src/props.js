@@ -10,7 +10,7 @@ const place = (g, x, z, ry = 0, y = null) => { g.position.set(x, y ?? height(x, 
 // rotation that turns a prop's front (+z) toward a point
 export const facing = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);
 
-export function cottage(x, z, ry, { wall, roof, door, trim = CREAM, w = 2.8, h = 1.7, d = 2.4 }) {
+export function cottage(x, z, ry, { wall, roof, door, trim = CREAM, w = 2.8, h = 1.7, d = 2.4, solid = true }) {
   const g = new THREE.Group();
   g.add(at(box(w + 0.16, 0.34, d + 0.16, STONE, 0.03, 0.08), 0, 0.17, 0));
   g.add(at(box(w, h, d, wall, 0.035, 0.16), 0, 0.2 + h / 2, 0));
@@ -37,12 +37,12 @@ export function cottage(x, z, ry, { wall, roof, door, trim = CREAM, w = 2.8, h =
     g.add(at(box(0.52, 0.06, 0.12, trim, 0.016, 0.02), sx * w * 0.25, 0.2 + h * 0.6 - 0.25, -d / 2 - 0.05));
   }
   place(g, x, z, ry);
-  addSolid(x, z, Math.max(w, d) * 0.62);
+  if (solid) addSolid(x, z, Math.max(w, d) * 0.62);
   return g;
 }
 
 // A plot with a house going up: the village grows as you help build.
-export function frame(x, z, ry, sign = 'NEEDS: PLANKS') {
+export function frame(x, z, ry, sign = 'NEEDS: PLANKS', solid = true) {
   const g = new THREE.Group(), w = 2.6, d = 2.0, h = 1.8, T = 0.028;
   g.add(at(box(w + 0.4, 0.22, d + 0.4, STONE, 0.03, 0.06), 0, 0.11, 0));
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(at(box(0.16, h, 0.16, 0xe0b06a, T, 0.03), sx * w / 2, 0.2 + h / 2, sz * d / 2));
@@ -58,7 +58,7 @@ export function frame(x, z, ry, sign = 'NEEDS: PLANKS') {
   // a little sign: what it needs
   g.add(signboard(sign, 0.4, w / 2 + 0.9, 0.6));
   place(g, x, z, ry);
-  addSolid(x, z, 1.9);
+  if (solid) addSolid(x, z, 1.9);
   return g;
 }
 

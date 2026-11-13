@@ -24,6 +24,12 @@ Use the action button near a marked resource, the workbench, or a building site.
 
 Progress and photos save to this browser’s local storage. Keep using the same browser or home-screen installation to resume. Storage sharing between these modes depends on your browser. Clearing the game’s site data also clears the save. Playing requires a connection to load the game and Three.js.
 
+## Build the meadow neighborhood
+
+After opening the village bakery, cross Bramble Creek and use the Meadow Planning board near Meadow Rest. Choose which of the three marked lots gets the lodge, workshop, or bakehouse. Gather stormfall timber, quarry stone, and meadow apples, then deliver materials at each foundation. The completed workshop can also turn wood into planks close to the meadow.
+
+Return to the board to assign Pip’s apple delivery and Bruno’s timber haul. When the three buildings and both deliveries are complete, celebrate opening day at the board. The album keeps each plot’s before and after portraits and the opening group photo. Use **Save photo** to download a JPEG.
+
 ## Browser tour
 
 Run `npm test` with Edge or Chrome installed. Set `BROWSER_PATH` for a different Chromium executable, or install Playwright Chromium with `npx playwright-core install chromium`. The tour saves screenshots to `test-results/`.

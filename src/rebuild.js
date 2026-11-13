@@ -4,12 +4,29 @@ export const projects = {
   beacon: { title: 'Watchtower beacon', site: [76, -38], approach: [72, -37], needs: { lantern: 1, stone: 2 }, villagers: ['Bruno', 'Dot', 'Fennel'] },
 };
 
+export const plots = [[51, -32], [57, -32], [60, -26]];
+export const meadowBoard = [54, -22.5];
+export const neighborhood = {
+  lodge: { title: 'Meadow lodge', needs: { planks: 3, stone: 2 }, villagers: ['Bruno', 'Mabel'] },
+  workshop: { title: 'Meadow workshop', needs: { planks: 3, stone: 2 }, villagers: ['Bruno', 'Fennel'] },
+  bakehouse: { title: 'Meadow bakehouse', needs: { planks: 2, stone: 2, apples: 2 }, villagers: ['Bruno', 'Pip', 'Dot'] },
+};
+Object.assign(projects, neighborhood);
+
+export function plotProject(progress, name) {
+  const [x, z] = plots[progress.plots[name]];
+  return { ...projects[name], site: [x, z], approach: [x, z + 2.8], photoSpot: [x, z + 3.2] };
+}
+
 export const deposits = [
   { id: 'creek', kind: 'wood', name: 'fallen branches', tool: 'Hatchet', x: 46, z: -23.7, amount: 3 },
   { id: 'woods', kind: 'wood', name: 'fallen branches', tool: 'Hatchet', x: -5, z: -32, amount: 4 },
   { id: 'meadow', kind: 'stone', name: 'loose stone', tool: 'Pickaxe', x: 52, z: -27, amount: 3 },
   { id: 'highlands', kind: 'stone', name: 'loose stone', tool: 'Pickaxe', x: -58, z: -24, amount: 2 },
   { id: 'orchard', kind: 'apples', name: 'apple basket', x: -38, z: 1, amount: 3 },
+  { id: 'grove', kind: 'wood', name: 'stormfall timber', tool: 'Hatchet', x: 47, z: -31, amount: 8 },
+  { id: 'quarry', kind: 'stone', name: 'meadow quarry stone', tool: 'Pickaxe', x: 61, z: -33, amount: 6 },
+  { id: 'meadow-apples', kind: 'apples', name: 'meadow apples', x: 48, z: -24, amount: 2 },
   { id: 'cave', kind: 'copper', name: 'copper seam', tool: 'Pickaxe', x: -85, z: -37, amount: 2 },
 ];
 
@@ -20,10 +37,16 @@ export const materials = ['wood', 'planks', 'stone', 'apples', 'copper', 'lanter
 export function loadProgress() {
   try {
     const data = JSON.parse(localStorage.getItem(key));
-    if (data?.version === 1) return data;
+    if (data?.version === 1) {
+      data.plots ??= {};
+      data.jobs ??= {};
+      data.opening ??= false;
+      for (const name of Object.keys(projects)) data.built[name] ??= {};
+      return data;
+    }
   } catch {}
   return {
-    version: 1, started: false, photos: {}, gathered: [],
+    version: 1, started: false, plots: {}, jobs: {}, opening: false, photos: {}, gathered: [],
     inventory: Object.fromEntries(materials.map(name => [name, 0])),
     built: Object.fromEntries(Object.keys(projects).map(name => [name, {}])),
   };

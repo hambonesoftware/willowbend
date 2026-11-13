@@ -238,15 +238,46 @@ if (!only || only === 'route') {
     await visit(72, -37, 'watchtower');
     check((await info(page)).progress.built.beacon.lantern === 1, 'lantern lights the watchtower');
 
+    const planner = page.locator('#planner');
+    const openPlanner = async () => {
+      await visit(54, -21.3, 'planning board');
+      await planner.waitFor({ state: 'visible' });
+    };
+    await openPlanner();
+    const lots = planner.locator('section');
+    await lots.nth(0).getByRole('button', { name: 'Meadow bakehouse' }).click();
+    await lots.nth(1).getByRole('button', { name: 'Meadow lodge' }).click();
+    await lots.nth(2).getByRole('button', { name: 'Meadow workshop' }).click();
+    check((await info(page)).progress.plots.bakehouse === 0, 'player chooses where the bakehouse goes');
+    await planner.getByRole('button', { name: 'Close' }).click();
+    await visit(47, -31, 'stormfall timber');
+    await visit(61, -33, 'meadow quarry');
+    await visit(48, -24, 'meadow apples');
+    await visit(-12, -13.5, 'workbench');
+    await visit(51, -29.2, 'meadow bakehouse');
+    await visit(57, -29.2, 'meadow lodge');
+    await visit(60, -23.2, 'meadow workshop');
+    check(Object.keys((await info(page)).progress.built.bakehouse).length === 3, 'bakehouse accepts player-gathered supplies');
+    await openPlanner();
+    await planner.getByRole('button', { name: 'Pip · Deliver apples' }).click();
+    await planner.getByRole('button', { name: 'Bruno · Haul timber' }).click();
+    await planner.getByRole('button', { name: 'Close' }).click();
+    await page.evaluate(() => window.WB.sim(18));
+    check((await info(page)).progress.jobs.Pip === 'delivered', 'Pip walks a delivery route and stocks the bakehouse');
+    check((await info(page)).progress.jobs.Bruno === 'delivered', 'Bruno delivers timber to the workshop');
+    await openPlanner();
+    await planner.getByRole('button', { name: 'Celebrate opening day' }).click();
+    check((await info(page)).progress.opening, 'opening day adds the neighborhood group portrait');
+
     await page.reload();
     await page.waitForFunction(() => window.READY, null, { timeout: 60000 });
     await page.keyboard.press('Enter');
     await page.locator('#open-album').click();
     await page.waitForFunction(() => {
       const photos = [...document.querySelectorAll('#album img')];
-      return photos.length === 3 && photos.every(photo => photo.complete && photo.naturalWidth > 0);
+      return photos.length === 10 && photos.every(photo => photo.complete && photo.naturalWidth > 0);
     }, null, { timeout: 20000 });
-    check(await page.locator('#album figure').count() === 3, 'all three portraits load from device storage');
+    check(await page.locator('#album figure').count() === 10, 'all ten portraits load from device storage');
     await shot(page, '14-rebuild-album');
     check(errors.length === 0, 'no page errors on the keyboard route or quest', errors.join(' | '));
   } catch (error) {

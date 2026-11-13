@@ -52,11 +52,14 @@
   #open-album { position:absolute; top:calc(14px + env(safe-area-inset-top)); right:14px; padding:8px 14px; background:var(--cream); color:var(--ink); font:inherit; pointer-events:auto; cursor:pointer; }
   #hud:not(.on) #open-album { visibility:hidden; }
   body.touch #project-hud { top:auto; bottom:calc(14px + env(safe-area-inset-bottom)); width:min(250px, 56vw); }
-  #album { width:min(600px, 84vw); max-height:78vh; border:3px solid var(--ink); border-radius:20px; background:var(--cream); color:var(--ink); padding:18px; }
-  #album::backdrop { background:#302333a1; }
-  #album header { display:flex; justify-content:space-between; align-items:center; }
-  #album h2 { margin:0; }
-  #album button { padding:5px 12px; background:white; color:inherit; font:inherit; cursor:pointer; }
+  #album, #planner { width:min(600px, 84vw); max-height:78vh; border:3px solid var(--ink); border-radius:20px; background:var(--cream); color:var(--ink); padding:18px; }
+  #album::backdrop, #planner::backdrop { background:#302333a1; }
+  #album header, #planner header { display:flex; justify-content:space-between; align-items:center; }
+  #album h2, #planner h2 { margin:0; }
+  #album button, #planner button { padding:5px 12px; background:white; color:inherit; font:inherit; cursor:pointer; }
+  #planner section { padding:10px 0; border-bottom:1px solid #d9c4a9; }
+  #planner section strong { display:block; }
+  #planner button { margin:5px 5px 0 0; }
   #album figure { margin:16px 0 0; }
   #album img { display:block; width:100%; max-height:55vh; object-fit:contain; background:#ead6ad; border-radius:8px; }
   #album figcaption { padding:6px 0; }
@@ -107,6 +110,12 @@
 <dialog id="album" aria-labelledby="album-title">
   <header><h2 id="album-title">Photo album</h2><form method="dialog"><button class="pill">Close</button></form></header>
   <div id="album-pages"></div>
+</dialog>
+<dialog id="planner" aria-labelledby="planner-title">
+  <header><h2 id="planner-title">Meadow planning</h2><form method="dialog"><button class="pill">Close</button></form></header>
+  <div id="meadow-sites"></div>
+  <div id="meadow-jobs"></div>
+  <div id="meadow-event"></div>
 </dialog>
 <script type="module" src="src/main.js"></script>
 </body>

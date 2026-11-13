@@ -3,7 +3,7 @@ import { buildWorld } from './world.js';
 import { makeKid, makeCat, makeBunny, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
 import { groundAt, walkable, zoneAt, height, WATER } from './layout.js';
 import { rand, clamp, lerp } from './util.js';
-import { projects, deposits, workbench, materials, loadProgress, saveProgress, complete, contribute, remaining } from './rebuild.js';
+import { projects, deposits, workbench, materials, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject } from './rebuild.js';
 
 const $ = id => document.getElementById(id);
 const TEST = /[?&](test|debug)\b/.test(location.search);
@@ -102,7 +102,7 @@ let started = false;
 const startKeys = e => { if (!started) { start(); e.preventDefault(); } };
 addEventListener('keydown', e => {
   if (!started) { if (!splash.classList.contains('loading')) startKeys(e); return; }
-  if ($('album').open || e.target instanceof HTMLButtonElement) return;
+  if (document.querySelector('dialog[open]') || e.target instanceof HTMLButtonElement) return;
   keys.add(e.code);
   if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) interact(); e.preventDefault(); }
 });
@@ -149,7 +149,7 @@ canvasEl.addEventListener('wheel', e => zoom(cam.dist + e.deltaY * 0.01), { pass
 $('talk').addEventListener('click', interact);
 
 function readInput() {
-  if ($('album').open) { Object.assign(input, { mx: 0, mz: 0, run: false, turn: 0, zoom: 0 }); return; }
+  if (document.querySelector('dialog[open]')) { Object.assign(input, { mx: 0, mz: 0, run: false, turn: 0, zoom: 0 }); return; }
   let mx = 0, mz = 0;
   if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1;
   if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
@@ -214,7 +214,13 @@ function updatePlayer(dt) {
 // ---------- villagers ----------
 function updateVillager(v, dt) {
   const dpx = pl.x - v.x, dpz = pl.z - v.z, dp = Math.hypot(dpx, dpz);
-  let speed = 0;
+  let speed = started ? updateWorker(v, dt) : null;
+  if (speed !== null) {
+    v.c.root.position.set(v.x, groundAt(v.x, v.z), v.z);
+    v.c.root.rotation.y = v.ry;
+    return speed;
+  }
+  speed = 0;
   if (v.state === 'pose') { /* holding the opening shot */ }
   else if (dp < 2.8 && started) {
     v.ry = turnTo(v.ry, Math.atan2(dpx, dpz), Math.min(1, dt * 6));
@@ -260,9 +266,11 @@ const nearPoint = (x, z) => Math.hypot(pl.x - x, pl.z - z) < 2.2;
 
 function refreshProjects(message) {
   const cottage = done('cottage'), bakery = done('bakery'), beacon = done('beacon');
+  world.showNeighborhood(progress, bakery, done);
   world.showProjects(progress.started, cottage, bakery, progress.built.bakery.stone === 3, beacon);
   for (const node of deposits) {
-    const unlocked = node.id === 'creek' ? progress.started : node.id === 'cave' ? bakery : cottage;
+    const unlocked = node.id === 'creek' ? progress.started
+      : ['grove', 'quarry', 'meadow-apples', 'cave'].includes(node.id) ? bakery : cottage;
     world.deposits.get(node.id).visible = unlocked && !progress.gathered.includes(node.id);
   }
   inventory.hidden = !started || !progress.started;
@@ -275,25 +283,39 @@ function refreshProjects(message) {
       : progress.inventory.wood ? 'Craft planks at Bruno’s temporary bench.' : 'Cross Bramble Creek and cut the marked branches with your hatchet.')
     : !bakery ? 'Bakery needs ' + remaining(progress, 'bakery') + '. Gather wood in the woods, stone past the bridge, and apples at the orchard.'
     : !beacon ? 'Beacon needs ' + remaining(progress, 'beacon') + '. Mine copper by Echo Cave and stone in the highlands. Craft a lantern at the workbench.'
-    : 'Willowbend is rebuilt. See your group photos in the album.';
+    : progress.opening ? 'Willowbend and the meadow are open. See your group photos in the album.'
+      : 'Plan the new neighborhood at the Meadow Planning board beyond Bramble Creek.';
   objective.textContent = message ? message + ' ' + next : next;
 }
 
 function renderAlbum() {
-  const entries = Object.entries(projects).filter(([name]) => progress.photos[name]);
+  const entries = Object.entries(projects).filter(([name]) => progress.photos[name] || progress.photos[name + '-before']);
   const pages = $('album-pages');
   pages.replaceChildren();
   for (const [name, project] of entries) {
-    const figure = document.createElement('figure');
-    const image = new Image();
-    image.src = progress.photos[name];
-    image.alt = 'Group portrait at ' + project.title;
-    const caption = document.createElement('figcaption');
-    caption.textContent = project.title + ' · You, ' + new Intl.ListFormat('en').format(project.villagers);
-    figure.append(image, caption);
-    pages.append(figure);
+    if (progress.photos[name + '-before']) {
+      appendAlbumPhoto(pages, progress.photos[name + '-before'], project.title + ' · Before construction');
+    }
+    if (progress.photos[name]) appendAlbumPhoto(pages, progress.photos[name], project.title + ' · You, ' + new Intl.ListFormat('en').format(project.villagers));
   }
-  if (!entries.length) pages.textContent = 'Finish a project to take your first group photo.';
+  if (progress.photos.opening) appendAlbumPhoto(pages, progress.photos.opening, 'Meadow opening day · You and the neighbors');
+  if (!pages.children.length) pages.textContent = 'Finish a project to take your first group photo.';
+}
+
+function appendAlbumPhoto(pages, source, label) {
+  const figure = document.createElement('figure');
+  const image = new Image();
+  image.src = source;
+  image.alt = label;
+  const caption = document.createElement('figcaption');
+  caption.textContent = label;
+  const download = document.createElement('a');
+  download.href = source;
+  download.download = label.split(' · ')[0] + '.jpg';
+  download.textContent = 'Save photo';
+  caption.append(' · ', download);
+  figure.append(image, caption);
+  pages.append(figure);
 }
 
 $('open-album').addEventListener('click', () => {
@@ -306,15 +328,15 @@ album.addEventListener('close', () => {
   $('open-album').blur();
 });
 
-function takePhoto(name) {
-  const project = projects[name];
+function takePhoto(name, project = projects[name]) {
+  if (name in neighborhood) project = plotProject(progress, name);
   const [x, z] = project.site;
   const [ax, az] = project.photoSpot ?? project.approach;
   const forward = new THREE.Vector3(ax - x, 0, az - z).normalize();
   const right = new THREE.Vector3(forward.z, 0, -forward.x);
   const group = [makeKid(), ...project.villagers.map(villager => byName[villager].make())];
   const portrait = new THREE.PerspectiveCamera(name === 'beacon' ? 55 : 41, 1.5, 0.5, 900);
-  const distance = 7;
+  const distance = name === 'opening' ? 10 : 7;
   portrait.position.set(ax + forward.x * distance, groundAt(ax, az) + 3.6, az + forward.z * distance);
   portrait.lookAt(ax - forward.x * 0.9, groundAt(ax, az) + (name === 'beacon' ? 3.3 : 1.8), az - forward.z * 0.9);
   const actors = [player, ...CAST.map(v => v.c)];
@@ -361,6 +383,133 @@ function build(name) {
   commitProgress(projects[name].title + ' is finished!' + (photographed ? ' Group photo added to the album.' : ' The group photo could not be captured.'));
 }
 
+const planner = $('planner');
+const workers = { Pip: 'Deliver apples', Bruno: 'Haul timber' };
+const workRoutes = {
+  Pip: [[48, -24], [50, -25.5], meadowBoard],
+  Bruno: [[47, -31], [47, -27.5], [50, -25.5], meadowBoard],
+};
+const villagerCargoGeometry = {
+  Pip: new THREE.SphereGeometry(0.19, 12, 8),
+  Bruno: new THREE.BoxGeometry(0.65, 0.2, 0.23),
+};
+const villagerCargoMaterials = {
+  Pip: new THREE.MeshToonMaterial({ color: 0xdc5346 }),
+  Bruno: new THREE.MeshToonMaterial({ color: 0xa9794a }),
+};
+const nextStop = {};
+
+function openPlanner() {
+  keys.clear();
+  renderPlanner();
+  planner.showModal();
+}
+
+function plannerButton(parent, label, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'pill';
+  button.textContent = label;
+  button.addEventListener('click', action);
+  parent.append(button);
+}
+
+function renderPlanner() {
+  const sites = $('meadow-sites');
+  sites.replaceChildren();
+  for (const [index] of plots.entries()) {
+    const section = document.createElement('section');
+    const title = document.createElement('strong');
+    const choice = Object.keys(neighborhood).find(name => progress.plots[name] === index);
+    title.textContent = 'Plot ' + (index + 1) + (choice ? ' · ' + projects[choice].title : '');
+    section.append(title);
+    if (choice) {
+      const details = document.createElement('p');
+      details.textContent = done(choice) ? 'Finished' : 'Still needed: ' + remaining(progress, choice);
+      section.append(details);
+    } else for (const [name, project] of Object.entries(neighborhood)) {
+      if (name in progress.plots) continue;
+      plannerButton(section, project.title, () => {
+        const [x, z] = plots[index];
+        const view = { ...project, site: [x, z], approach: [x, z + 3.2] };
+        takePhoto(name + '-before', view);
+        progress.plots[name] = index;
+        commitProgress('Foundation placed on plot ' + (index + 1) + '.');
+        renderPlanner();
+      });
+    }
+    sites.append(section);
+  }
+  const jobs = $('meadow-jobs');
+  jobs.replaceChildren();
+  for (const [villager, job] of Object.entries(workers)) {
+    const required = villager === 'Pip' ? 'bakehouse' : 'workshop';
+    if (!done(required)) continue;
+    if (progress.jobs[villager]) {
+      const line = document.createElement('p');
+      line.textContent = villager + (progress.jobs[villager] === 'delivered' ? ' finished the first delivery.' : ' is on the delivery route.');
+      jobs.append(line);
+    } else plannerButton(jobs, villager + ' · ' + job, () => {
+      progress.jobs[villager] = 'working';
+      commitProgress(villager + ' started the first delivery.');
+      renderPlanner();
+    });
+  }
+  const event = $('meadow-event');
+  event.replaceChildren();
+  if (!progress.opening && Object.keys(neighborhood).every(done) && Object.keys(workers).every(name => progress.jobs[name] === 'delivered')) {
+    plannerButton(event, 'Celebrate opening day', () => {
+      const home = plotProject(progress, 'bakehouse');
+      if (takePhoto('opening', { ...home, villagers: ['Bruno', 'Pip', 'Dot', 'Mabel', 'Fennel'] })) {
+        progress.opening = true;
+        commitProgress('Opening day photo added to the album.');
+        planner.close();
+      }
+    });
+  }
+}
+
+function updateWorker(v, dt) {
+  const worker = progress.jobs[v.name];
+  if (!worker) return null;
+  const destination = plotProject(progress, v.name === 'Pip' ? 'bakehouse' : 'workshop').approach;
+  if (worker === 'delivered') {
+    if (v.cargo) v.cargo.visible = false;
+    [v.x, v.z] = destination;
+    return 0;
+  }
+  const route = workRoutes[v.name];
+  if (!(v.name in nextStop)) {
+    [v.x, v.z] = route[0];
+    nextStop[v.name] = 1;
+    v.cargo = new THREE.Mesh(
+      villagerCargoGeometry[v.name],
+      villagerCargoMaterials[v.name],
+    );
+    v.cargo.position.set(0, 0.8, 0.52);
+    v.c.root.add(v.cargo);
+  }
+  const [x, z] = route[nextStop[v.name]] ?? destination;
+  const dx = x - v.x, dz = z - v.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance < 0.2) {
+    if (nextStop[v.name] < route.length) nextStop[v.name]++;
+    else {
+      progress.jobs[v.name] = 'delivered';
+      if (v.name === 'Pip') progress.inventory.apples += 2;
+      else progress.inventory.wood += 2;
+      commitProgress(v.name + ' delivered the first supplies.');
+      if (planner.open) renderPlanner();
+    }
+    return 0;
+  }
+  v.ry = Math.atan2(dx, dz);
+  const step = Math.min(distance, dt * 2.4);
+  v.x += dx * step / distance;
+  v.z += dz * step / distance;
+  return 2.4;
+}
+
 function craft() {
   const stock = progress.inventory;
   if (stock.wood) {
@@ -389,12 +538,19 @@ function nearbyAction() {
       commitProgress('Gathered ' + node.amount + ' ' + node.kind + '.');
     } };
   }
-  if (nearPoint(...workbench)) {
-    const [x, z] = workbench;
+  if (done('bakery') && nearPoint(...meadowBoard)) {
+    const [x, z] = meadowBoard;
+    return { position: { x, y: groundAt(x, z), z }, label: 'Plan neighborhood', run: openPlanner };
+  }
+  const workshop = done('workshop') ? plotProject(progress, 'workshop').approach : null;
+  const station = nearPoint(...workbench) ? workbench : workshop && nearPoint(...workshop) ? workshop : null;
+  if (station && (!workshop || station === workbench || progress.inventory.wood)) {
+    const [x, z] = station;
     return { position: { x, y: groundAt(x, z), z }, label: 'Craft at workbench', run: craft };
   }
   for (const [name, project] of Object.entries(projects)) {
-    const [x, z] = project.approach;
+    if (name in neighborhood && !(name in progress.plots)) continue;
+    const [x, z] = name in neighborhood ? plotProject(progress, name).approach : project.approach;
     if (done(name) || (name === 'bakery' && !done('cottage')) || (name === 'beacon' && !done('bakery')) || !nearPoint(x, z)) continue;
     return { position: { x, y: groundAt(x, z), z }, label: 'Build ' + project.title, run: () => build(name) };
   }
@@ -433,7 +589,7 @@ function villagerLine(villager) {
 }
 
 function interact() {
-  if (!started || album.open) return;
+  if (!started || document.querySelector('dialog[open]')) return;
   const action = nearbyAction();
   if (action) return action.run();
   if (!near) return;
@@ -546,7 +702,7 @@ if (TEST) {
   window.WB = {
     start,
     info: () => ({
-      started, houseFinished: world.house.visible, progress: { inventory: { ...progress.inventory }, gathered: [...progress.gathered], built: structuredClone(progress.built), photos: Object.keys(progress.photos) }, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
+      started, houseFinished: world.house.visible, progress: { inventory: { ...progress.inventory }, gathered: [...progress.gathered], built: structuredClone(progress.built), photos: Object.keys(progress.photos), plots: { ...progress.plots }, jobs: { ...progress.jobs }, opening: progress.opening }, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
       speaking: speaking?.name ?? null, yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
       villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state })),
     }),

@@ -4,10 +4,10 @@ import { RAMP, flat, glowTex, bake, ball, at, cone, mesh, box } from './gfx.js';
 import { reseed, rand, rng, pick, fbm, smooth, lerp, polyDist } from './util.js';
 import {
   WATER, WORLD, RING, LIMIT, RIVER, POND, BRIDGE, PATHS, SITES,
-  height, groundAt, bridgeDeck, onBridge, pathDist, hitSolid,
+  height, groundAt, bridgeDeck, onBridge, pathDist, hitSolid, addSolid,
 } from './layout.js';
 import * as P from './props.js';
-import { deposits, projects, workbench } from './rebuild.js';
+import { deposits, projects, workbench, plots, meadowBoard, neighborhood, plotProject } from './rebuild.js';
 
 const SKY = { top: 0x4aaeea, mid: 0x9fdcf8, bot: 0xfff2cc, fog: 0xdcefee };
 const PETALS = [0xffffff, 0xff8fb0, 0xffd166, 0xc79bff, 0xff7a59];
@@ -288,6 +288,36 @@ export function buildWorld(scene) {
     W.deposits.set(node.id, prop);
   }
 
+  const board = P.signpost(...meadowBoard, 0, [['MEADOW PLANNING', 0, 0]]);
+  scene.add(board);
+  const stakes = plots.map(([x, z], index) => {
+    const prop = P.signboard('PLOT ' + (index + 1), 0, x, z);
+    scene.add(prop);
+    return prop;
+  });
+  const builds = new Map();
+  const palette = { lodge: [0xffd5ab, 0x718bca], workshop: [0xe2d4a3, 0x557e6b], bakehouse: [0xffdfac, 0xc56c90] };
+  W.showNeighborhood = (progress, unlocked, done) => {
+    board.visible = unlocked;
+    stakes.forEach((stake, index) => { stake.visible = unlocked && !Object.values(progress.plots).includes(index); });
+    for (const name of Object.keys(neighborhood)) {
+      if (!(name in progress.plots)) continue;
+      if (!builds.has(name)) {
+        const [x, z] = plotProject(progress, name).site;
+        const [wall, roof] = palette[name];
+        const frame = bake(P.frame(x, z, 0, 'FOUNDATION', false));
+        const finished = bake(P.cottage(x, z, 0, { wall, roof, door: 0xa25746, solid: false }));
+        const sign = P.signboard(neighborhood[name].title.toUpperCase(), 0, x - 1.9, z + 1.5);
+        scene.add(frame, finished, sign);
+        addSolid(x, z, 1.9);
+        builds.set(name, { frame, finished });
+      }
+      const { frame, finished } = builds.get(name);
+      finished.visible = done(name);
+      frame.visible = !finished.visible;
+    }
+  };
+
   // A roadside stop between the bridge and the climb to the watchtower.
   add(P.signpost(43, -18.5, -0.45, [['WATCHTOWER →', 0.2, 0.05], ['← WILLOWBEND', -0.2, -0.05]]));
   add(P.bench(51, -21, P.facing(51, -21, 45, -24)));
@@ -331,7 +361,7 @@ export function buildWorld(scene) {
   const clear = (x, z, pad, r = 0.6) => {
     const h = height(x, z);
     return h > WATER + 0.35 && h < 9 && ringDist(x, z) < LIMIT + 6 && pathDist(x, z) > pad &&
-      Math.hypot(x, z) > 9 && !hitSolid(x, z, r) && !onBridge(x, z) &&
+      Math.hypot(x, z) > 9 && !plots.some(([px, pz]) => Math.hypot(x - px, z - pz) < 4) && !hitSolid(x, z, r) && !onBridge(x, z) &&
       !(Math.abs(x - F.x) < F.w / 2 + 1.5 && Math.abs(z - F.z) < F.d / 2 + 1.5) &&
       Math.hypot(x - G.x, z - G.z) > 9.5;
   };
