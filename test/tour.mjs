@@ -5,6 +5,11 @@ import path from 'node:path';
 import { serve, ROOT } from './serve.mjs';
 import { launchBrowser } from './browser.mjs';
 
+async function closeConversation(page) {
+  await page.getByRole('button', { name: 'Goodbye' }).click();
+  await page.waitForFunction(() => document.activeElement?.id === 'c');
+}
+
 const OUT = path.join(ROOT, 'test-results');
 fs.mkdirSync(OUT, { recursive: true });
 const only = process.argv[2];
@@ -86,7 +91,7 @@ if (only !== 'route') {
   s = await info(page);
   check(s.speaking === 'Mabel', 'Space starts the chat');
   await shot(page, '04-talk');
-  await page.getByRole('button', { name: 'Goodbye' }).click();
+  await closeConversation(page);
 
   // the bridge carries you over the creek; the creek stops you anywhere else
   await page.evaluate(() => { window.WB.warp(19.5, -21); window.WB.lookAt(19.5, -30); window.WB.sim(0.1); });
@@ -202,7 +207,7 @@ if (!only || only === 'route') {
     const conversation = page.locator('#conversation');
     const choose = async label => {
       await conversation.getByRole('button', { name: label }).click();
-      await conversation.getByRole('button', { name: 'Goodbye' }).click();
+      await closeConversation(page);
     };
     await approachBruno();
     await page.keyboard.press('Space');
@@ -224,6 +229,7 @@ if (!only || only === 'route') {
       window.WB.sim(0.25);
     });
     await page.keyboard.press('Space');
+    await conversation.waitFor({ state: 'visible' });
     check((await conversation.locator('#conversation-reply').textContent()).includes('Bramble Creek'),
       'a different villager notices the active cottage job');
     await conversation.getByRole('button', { name: 'Where should I go?' }).click();
@@ -232,7 +238,7 @@ if (!only || only === 'route') {
     await conversation.getByRole('button', { name: 'Active jobs' }).click();
     check((await conversation.locator('#conversation-reply').textContent()).includes('Gather branches'),
       'active jobs topic repeats the next step without changing progress');
-    await conversation.getByRole('button', { name: 'Goodbye' }).click();
+    await closeConversation(page);
     const voices = await page.evaluate(() => {
       window.WB.warp(4, 4);
       window.WB.positionVillager('Mabel', 5, 4);

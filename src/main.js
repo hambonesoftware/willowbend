@@ -337,10 +337,11 @@ $('open-album').addEventListener('click', () => {
   renderAlbum();
   album.showModal();
 });
-album.addEventListener('close', () => {
+function restoreGameFocus() {
   keys.clear();
-  $('open-album').blur();
-});
+  canvasEl.focus({ preventScroll: true });
+}
+album.addEventListener('close', restoreGameFocus);
 
 function takePhoto(name, project = projects[name]) {
   if (name in neighborhood) project = plotProject(progress, name);
@@ -398,6 +399,7 @@ function build(name) {
 }
 
 const planner = $('planner');
+planner.addEventListener('close', restoreGameFocus);
 const workers = { Pip: 'Deliver apples', Bruno: 'Haul timber' };
 const workRoutes = {
   Pip: [[48, -24], [50, -25.5], meadowBoard],
@@ -698,9 +700,8 @@ function openConversation(villager) {
 }
 
 conversation.addEventListener('close', () => {
-  keys.clear();
   speaking = null;
-  talkBtn.blur();
+  restoreGameFocus();
 });
 
 function interact() {
