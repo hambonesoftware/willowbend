@@ -3,7 +3,7 @@ import { buildWorld } from './world.js';
 import { makeKid, makeCat, makeBunny, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
 import { groundAt, walkable, zoneAt, height, WATER } from './layout.js';
 import { rand, clamp, lerp } from './util.js';
-import { projects, deposits, workbench, materials, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject } from './rebuild.js';
+import { projects, deposits, workbench, materials, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject, villageJobs } from './rebuild.js';
 
 const $ = id => document.getElementById(id);
 const TEST = /[?&](test|debug)\b/.test(location.search);
@@ -45,6 +45,9 @@ const CAST = [
   { name: 'Dot', make: makeDuck, home: world.homes.duck, lines: ['Quack! Oh, sorry. Hello!', 'The lily pond is the best place for a nap.', 'Someone lives inside the Elder Tree. I saw a light!'] },
   { name: 'Biscuit', make: makeDog, home: world.homes.dog, lines: ['Wanna race to the bridge? ...Maybe later.', 'I buried something in the woods. I forget where.', 'Every path out of town goes somewhere good!'] },
   { name: 'Fennel', make: makeFrog, home: world.homes.frog, lines: ['Ribbit. The creek is extra sparkly at noon.', 'The highlands are rocky, but the view is worth it.', 'I collect shiny pebbles. Want to see? No? Okay.'] },
+  ...villageJobs.map((job, index) => ({
+    name: job.villager, make: [makeCat, makeFrog, makeBunny][index], home: job.start, job,
+  })),
 ].map((v, i) => {
   const c = v.make();
   c.ph = i * 1.3;
@@ -62,7 +65,7 @@ const SPLASH_CAM = { pos: new THREE.Vector3(0, 3.6, 30.5), look: new THREE.Vecto
 const pl = { x: POSE.kid[0], z: POSE.kid[1], y: 0, ry: POSE.kid[2], vx: 0, vz: 0, speed: 0 };
 function setPose(c, x, z, ry) { c.root.position.set(x, groundAt(x, z), z); c.root.rotation.y = ry; }
 setPose(player, pl.x, pl.z, pl.ry);
-for (const v of CAST) { [v.x, v.z, v.ry] = POSE[v.name]; setPose(v.c, v.x, v.z, v.ry); }
+for (const v of CAST) { [v.x, v.z, v.ry] = POSE[v.name] ?? [...v.home, 0]; setPose(v.c, v.x, v.z, v.ry); }
 player.armHold = byName.Mabel.c.armHold = byName.Bruno.c.armHold = true;
 player.arms[-1].rotation.z = -2.55;
 byName.Mabel.c.arms[-1].rotation.z = -2.5;
@@ -221,7 +224,7 @@ function updateVillager(v, dt) {
     return speed;
   }
   speed = 0;
-  if (v.state === 'pose') { /* holding the opening shot */ }
+  if (v.job || v.state === 'pose') { /* holding the opening shot */ }
   else if (dp < 2.8 && started) {
     v.ry = turnTo(v.ry, Math.atan2(dpx, dpz), Math.min(1, dt * 6));
     if (v.state === 'walk') { v.state = 'idle'; v.timer = rand(1, 2); }
@@ -267,6 +270,7 @@ const nearPoint = (x, z) => Math.hypot(pl.x - x, pl.z - z) < 2.2;
 function refreshProjects(message) {
   const cottage = done('cottage'), bakery = done('bakery'), beacon = done('beacon');
   world.showNeighborhood(progress, bakery, done);
+  world.showErrands(progress.errands);
   world.showProjects(progress.started, cottage, bakery, progress.built.bakery.stone === 3, beacon);
   for (const node of deposits) {
     const unlocked = node.id === 'creek' ? progress.started
@@ -285,7 +289,9 @@ function refreshProjects(message) {
     : !beacon ? 'Beacon needs ' + remaining(progress, 'beacon') + '. Mine copper by Echo Cave and stone in the highlands. Craft a lantern at the workbench.'
     : progress.opening ? 'Willowbend and the meadow are open. See your group photos in the album.'
       : 'Plan the new neighborhood at the Meadow Planning board beyond Bramble Creek.';
-  objective.textContent = message ? message + ' ' + next : next;
+  const errands = villageJobs.filter(job => ['active', 'carrying'].includes(progress.errands[job.id]))
+    .map(job => progress.errands[job.id] === 'carrying' ? job.delivery : job.pickup);
+  objective.textContent = [message, next, ...errands].filter(Boolean).join(' ');
 }
 
 function renderAlbum() {
@@ -527,7 +533,16 @@ function craft() {
 }
 
 function nearbyAction() {
-  if (!started || !progress.started) return null;
+  if (!started) return null;
+  for (const job of villageJobs) {
+    if (progress.errands[job.id] !== 'active' || !nearPoint(...job.stop)) continue;
+    const [x, z] = job.stop;
+    return { position: { x, y: groundAt(x, z), z }, label: job.pickup, run() {
+      progress.errands[job.id] = 'carrying';
+      commitProgress('Collected ' + job.cargo + '.');
+    } };
+  }
+  if (!progress.started) return null;
   for (const node of deposits) {
     const prop = world.deposits.get(node.id);
     if (!prop.visible || !nearPoint(node.x, node.z)) continue;
@@ -549,7 +564,7 @@ function nearbyAction() {
     return { position: { x, y: groundAt(x, z), z }, label: 'Craft at workbench', run: craft };
   }
   for (const [name, project] of Object.entries(projects)) {
-    if (name in neighborhood && !(name in progress.plots)) continue;
+    if (!project.needs || (name in neighborhood && !(name in progress.plots))) continue;
     const [x, z] = name in neighborhood ? plotProject(progress, name).approach : project.approach;
     if (done(name) || (name === 'bakery' && !done('cottage')) || (name === 'beacon' && !done('bakery')) || !nearPoint(x, z)) continue;
     return { position: { x, y: groundAt(x, z), z }, label: 'Build ' + project.title, run: () => build(name) };
@@ -574,6 +589,23 @@ function brunoLine() {
 }
 
 function villagerLine(villager) {
+  const job = villager.job;
+  if (job) {
+    const state = progress.errands[job.id];
+    if (state === 'done') return 'Thanks for helping with my stall. See you around town!';
+    if (state === 'carrying') {
+      progress.errands[job.id] = 'done';
+      refreshProjects();
+      const photographed = takePhoto(job.id);
+      commitProgress(job.title + ' completed.' + (photographed ? ' Group photo added.' : ''));
+      return 'Thanks! We did it together.';
+    }
+    if (state !== 'active') {
+      progress.errands[job.id] = 'active';
+      commitProgress(job.title + ' started.');
+    }
+    return job.line;
+  }
   if (villager === byName.Bruno) return brunoLine();
   if (progress.started && !done('cottage') && villager.name === 'Mabel') {
     return 'I marked the fallen branches for Bruno. They’re just past Bramble Creek bridge.';
@@ -702,7 +734,7 @@ if (TEST) {
   window.WB = {
     start,
     info: () => ({
-      started, houseFinished: world.house.visible, progress: { inventory: { ...progress.inventory }, gathered: [...progress.gathered], built: structuredClone(progress.built), photos: Object.keys(progress.photos), plots: { ...progress.plots }, jobs: { ...progress.jobs }, opening: progress.opening }, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
+      started, houseFinished: world.house.visible, progress: { inventory: { ...progress.inventory }, gathered: [...progress.gathered], built: structuredClone(progress.built), photos: Object.keys(progress.photos), plots: { ...progress.plots }, jobs: { ...progress.jobs }, opening: progress.opening, errands: { ...progress.errands } }, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
       speaking: speaking?.name ?? null, yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
       villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state })),
     }),

@@ -67,7 +67,7 @@ if (only !== 'route') {
   check(s.z < before.z - 6, 'W walks the kid up the road', `z ${before.z} -> ${s.z}`);
   check(s.zone === 'Willowbend Village', 'the zone sign names the village', s.zone);
   const walkedVillagers = s.villagers.filter(v => v.state !== 'pose').length;
-  check(walkedVillagers === 6, 'villagers leave their opening poses');
+  check(walkedVillagers === 9, 'villagers leave their opening poses');
   await shot(page, '03-walking');
 
   await page.evaluate(() => window.WB.sim(0.6, ['KeyW']));
@@ -238,6 +238,19 @@ if (!only || only === 'route') {
     await visit(72, -37, 'watchtower');
     check((await info(page)).progress.built.beacon.lantern === 1, 'lantern lights the watchtower');
 
+    for (const [id, host, stop] of [
+      ['market', [-5, 23], [-19, 16]],
+      ['pond', [-16, 37], [-22, 41]],
+      ['orchard', [-28, 2], [-36, 1]],
+    ]) {
+      await visit(...host, id + ' host');
+      check((await info(page)).progress.errands[id] === 'active', id + ' job starts through dialogue');
+      await visit(...stop, id + ' pickup');
+      check((await info(page)).progress.errands[id] === 'carrying', id + ' job records its pickup');
+      await visit(...host, id + ' delivery');
+      check((await info(page)).progress.errands[id] === 'done', id + ' job completes through dialogue');
+    }
+
     const planner = page.locator('#planner');
     const openPlanner = async () => {
       await visit(54, -21.3, 'planning board');
@@ -275,9 +288,9 @@ if (!only || only === 'route') {
     await page.locator('#open-album').click();
     await page.waitForFunction(() => {
       const photos = [...document.querySelectorAll('#album img')];
-      return photos.length === 10 && photos.every(photo => photo.complete && photo.naturalWidth > 0);
+      return photos.length === 13 && photos.every(photo => photo.complete && photo.naturalWidth > 0);
     }, null, { timeout: 20000 });
-    check(await page.locator('#album figure').count() === 10, 'all ten portraits load from device storage');
+    check(await page.locator('#album figure').count() === 13, 'all thirteen portraits load from device storage');
     await shot(page, '14-rebuild-album');
     check(errors.length === 0, 'no page errors on the keyboard route or quest', errors.join(' | '));
   } catch (error) {

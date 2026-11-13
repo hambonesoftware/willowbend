@@ -18,6 +18,15 @@ export function plotProject(progress, name) {
   return { ...projects[name], site: [x, z], approach: [x, z + 2.8], photoSpot: [x, z + 3.2] };
 }
 
+export const villageJobs = [
+  { id: 'market', villager: 'Hazel', title: 'Open the market stall', start: [-5, 23], stop: [-19, 16], finish: [-5, 23], pickup: 'Pick farm flowers', delivery: 'Deliver flowers to Hazel', cargo: 'flowers', line: 'Pick flowers at the north edge of the farm. I’ll put them on display at the market.' },
+  { id: 'pond', villager: 'Reed', title: 'Check the pond trail', start: [-16, 37], stop: [-22, 41], finish: [-16, 37], pickup: 'Check the pond marker', delivery: 'Report back to Reed', cargo: 'trail report', line: 'Check the marker near the Lily Pond dock and tell me how the trail looks.' },
+  { id: 'orchard', villager: 'Clover', title: 'Stock the cider stand', start: [-28, 2], stop: [-36, 1], finish: [-28, 2], pickup: 'Collect cider apples', delivery: 'Deliver apples to Clover', cargo: 'cider apples', line: 'My cider apples are in a crate at the north edge of the orchard. Can you fetch them?' },
+];
+Object.assign(projects, Object.fromEntries(villageJobs.map(job => [job.id, {
+  title: job.title, site: job.finish, approach: [job.finish[0], job.finish[1] + 3], villagers: [job.villager],
+}])));
+
 export const deposits = [
   { id: 'creek', kind: 'wood', name: 'fallen branches', tool: 'Hatchet', x: 46, z: -23.7, amount: 3 },
   { id: 'woods', kind: 'wood', name: 'fallen branches', tool: 'Hatchet', x: -5, z: -32, amount: 4 },
@@ -40,13 +49,14 @@ export function loadProgress() {
     if (data?.version === 1) {
       data.plots ??= {};
       data.jobs ??= {};
+      data.errands ??= {};
       data.opening ??= false;
       for (const name of Object.keys(projects)) data.built[name] ??= {};
       return data;
     }
   } catch {}
   return {
-    version: 1, started: false, plots: {}, jobs: {}, opening: false, photos: {}, gathered: [],
+    version: 1, started: false, plots: {}, jobs: {}, errands: {}, opening: false, photos: {}, gathered: [],
     inventory: Object.fromEntries(materials.map(name => [name, 0])),
     built: Object.fromEntries(Object.keys(projects).map(name => [name, {}])),
   };

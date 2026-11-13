@@ -24,6 +24,10 @@ Use the action button near a marked resource, the workbench, or a building site.
 
 Progress and photos save to this browser’s local storage. Keep using the same browser or home-screen installation to resume. Storage sharing between these modes depends on your browser. Clearing the game’s site data also clears the save. Playing requires a connection to load the game and Three.js.
 
+## Visit the village outskirts
+
+Follow the side paths from the south road to Farmgate Market and the Pond Trail Shelter. Hazel needs flowers from the farm, and Reed needs a report from the Lily Pond dock. The orchard path leads to Clover’s cider stand, where you can help bring in a crate of apples. Talk to each villager to start their job. Completing a job changes their stall and adds a group photo to the album.
+
 ## Build the meadow neighborhood
 
 After opening the village bakery, cross Bramble Creek and use the Meadow Planning board near Meadow Rest. Choose which of the three marked lots gets the lodge, workshop, or bakehouse. Gather stormfall timber, quarry stone, and meadow apples, then deliver materials at each foundation. The completed workshop can also turn wood into planks close to the meadow.

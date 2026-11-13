@@ -7,7 +7,7 @@ import {
   height, groundAt, bridgeDeck, onBridge, pathDist, hitSolid, addSolid,
 } from './layout.js';
 import * as P from './props.js';
-import { deposits, projects, workbench, plots, meadowBoard, neighborhood, plotProject } from './rebuild.js';
+import { deposits, projects, workbench, plots, meadowBoard, neighborhood, plotProject, villageJobs } from './rebuild.js';
 
 const SKY = { top: 0x4aaeea, mid: 0x9fdcf8, bot: 0xfff2cc, fog: 0xdcefee };
 const PETALS = [0xffffff, 0xff8fb0, 0xffd166, 0xc79bff, 0xff7a59];
@@ -426,6 +426,37 @@ export function buildWorld(scene) {
       add(P.flower(x + rand(-0.7, 0.7), z + rand(-0.55, 0.55), PETALS[i]));
     }
   }
+
+  // Connect the village road, market, farm, and pond without widening the main trail.
+  for (const trail of [
+    [[0, 19], [-5, 23], [-12, 20], [-19, 16]],
+    [[-5, 23], [-9, 30], [-16, 37], [-22, 41]],
+    [[-28, -6], [-28, -2], [-28, 2], [-36, 1]],
+  ]) {
+    ribbon(trail, 1.65, 0xc9a56a, 0.075);
+    ribbon(trail, 1.25, 0xeed5a1, 0.09);
+  }
+
+  const errands = new Map();
+  for (const job of villageJobs) {
+    const [x, z] = job.finish;
+    const [sx, sz] = job.stop;
+    const stall = bake(P.stall(x - 2.2, z, 0));
+    const sign = P.signboard(job.title.toUpperCase(), 0, x - 1.8, z + 1.4);
+    const marker = P.signboard(job.pickup.toUpperCase(), 0, sx, sz);
+    const display = new THREE.Group();
+    display.position.set(x - 2.2, height(x - 2.2, z) + 1.15, z + 0.45);
+    const color = { market: 0xef86bc, pond: 0x62afb6, orchard: 0xe65043 }[job.id];
+    for (const offset of [-0.35, 0, 0.35]) display.add(at(ball(0.16, color, 0.015, 10, 8), offset, 0, 0));
+    scene.add(stall, sign, marker, display);
+    errands.set(job.id, { marker, display });
+  }
+  W.showErrands = states => {
+    for (const [id, { marker, display }] of errands) {
+      marker.visible = states[id] === 'active';
+      display.visible = states[id] === 'done';
+    }
+  };
 
   const baked = bake(root, 64);
   scene.add(baked);
