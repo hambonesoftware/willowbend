@@ -42,7 +42,7 @@ export function cottage(x, z, ry, { wall, roof, door, trim = CREAM, w = 2.8, h =
 }
 
 // A plot with a house going up: the village grows as you help build.
-export function frame(x, z, ry) {
+export function frame(x, z, ry, sign = 'NEEDS: PLANKS') {
   const g = new THREE.Group(), w = 2.6, d = 2.0, h = 1.8, T = 0.028;
   g.add(at(box(w + 0.4, 0.22, d + 0.4, STONE, 0.03, 0.06), 0, 0.11, 0));
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(at(box(0.16, h, 0.16, 0xe0b06a, T, 0.03), sx * w / 2, 0.2 + h / 2, sz * d / 2));
@@ -56,7 +56,7 @@ export function frame(x, z, ry) {
   for (let i = 0; i < 3; i++) g.add(at(box(w - 0.1, 0.3, 0.07, 0xf4e2bd, 0.022, 0.02), 0, 0.42 + i * 0.34, -d / 2));
   for (const [lx, ly] of [[-0.19, 0.17], [0.19, 0.17], [0, 0.47]]) { const log = cyl(0.17, 0.17, 1.7, 0xb8824e, T, 12); log.rotation.x = Math.PI / 2; g.add(at(log, -w / 2 - 0.8 + lx, ly, 0.5)); }
   // a little sign: what it needs
-  g.add(signboard('NEEDS: WOOD', 0.4, w / 2 + 0.9, 0.6));
+  g.add(signboard(sign, 0.4, w / 2 + 0.9, 0.6));
   place(g, x, z, ry);
   addSolid(x, z, 1.9);
   return g;

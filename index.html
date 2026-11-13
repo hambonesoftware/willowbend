@@ -47,6 +47,19 @@
   #help { position: absolute; left: 16px; bottom: calc(14px + env(safe-area-inset-bottom)); padding: 6px 14px 7px; font-size: 14px; font-weight: 500; }
   #objective { position: absolute; top: calc(14px + env(safe-area-inset-top)); left: 14px; padding: 7px 13px; max-width: min(245px, 38vw); font-size: 15px; }
   body.touch #objective { top: auto; bottom: calc(14px + env(safe-area-inset-bottom)); max-width: min(240px, 55vw); }
+  #project-hud { position:absolute; top:calc(14px + env(safe-area-inset-top)); left:14px; width:min(260px, 46vw); display:grid; gap:6px; }
+  #project-hud #objective, #inventory { position:static; max-width:none; padding:7px 11px; font-size:13px; }
+  #open-album { position:absolute; top:calc(14px + env(safe-area-inset-top)); right:14px; padding:8px 14px; background:var(--cream); color:var(--ink); font:inherit; pointer-events:auto; cursor:pointer; }
+  #hud:not(.on) #open-album { visibility:hidden; }
+  body.touch #project-hud { top:auto; bottom:calc(14px + env(safe-area-inset-bottom)); width:min(250px, 56vw); }
+  #album { width:min(600px, 84vw); max-height:78vh; border:3px solid var(--ink); border-radius:20px; background:var(--cream); color:var(--ink); padding:18px; }
+  #album::backdrop { background:#302333a1; }
+  #album header { display:flex; justify-content:space-between; align-items:center; }
+  #album h2 { margin:0; }
+  #album button { padding:5px 12px; background:white; color:inherit; font:inherit; cursor:pointer; }
+  #album figure { margin:16px 0 0; }
+  #album img { display:block; width:100%; max-height:55vh; object-fit:contain; background:#ead6ad; border-radius:8px; }
+  #album figcaption { padding:6px 0; }
   #help b { display: inline-block; min-width: 1.2em; padding: 0 4px; margin: 0 2px; border: 2px solid var(--ink); border-radius: 6px; background: #fff; text-align: center; font-weight: 700; font-size: 12px; }
   #prompt { position: absolute; left: 0; top: 0; padding: 4px 12px 5px; font-size: 15px; white-space: nowrap; transform: translate(-50%, -100%); display: none; }
   #prompt b { color: #ff7a59; }
@@ -81,12 +94,20 @@
 <div id="hud">
   <div id="zone" class="pill"><small>now entering</small><span></span></div>
   <div id="help" class="pill"><b>W</b><b>A</b><b>S</b><b>D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Q</b><b>E</b> or drag to turn &nbsp; <b>&minus;</b><b>+</b> or wheel to zoom &nbsp; <b>Space</b> interact</div>
-  <div id="objective" class="pill" role="status" hidden></div>
+  <div id="project-hud">
+    <div id="objective" class="pill" role="status" hidden></div>
+    <div id="inventory" class="pill" hidden></div>
+  </div>
+  <button id="open-album" class="pill" type="button">Photo album</button>
   <div id="prompt" class="pill"></div>
   <div id="bubble"><span class="who"></span><span class="say"></span></div>
   <div id="stick"><div id="knob"></div></div>
   <button id="talk" type="button">Talk</button>
 </div>
+<dialog id="album" aria-labelledby="album-title">
+  <header><h2 id="album-title">Photo album</h2><form method="dialog"><button class="pill">Close</button></form></header>
+  <div id="album-pages"></div>
+</dialog>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

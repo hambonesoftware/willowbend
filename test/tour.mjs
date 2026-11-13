@@ -202,25 +202,52 @@ if (!only || only === 'route') {
     await page.keyboard.press('Space');
     const objective = page.locator('#objective');
     await objective.waitFor({ state: 'visible', timeout: 5000 });
-    check((await objective.textContent()).includes('across Bramble Creek'), 'Bruno gives directions to the wood');
-    await page.evaluate(() => {
-      window.WB.warp(46, -22);
-      window.WB.lookAt(46, -23.7);
-      window.WB.sim(0.2);
-    });
-    check((await page.locator('#prompt').textContent()).includes('Pick up wood'), 'the marked pile offers pickup');
-    await page.keyboard.press('Space');
-    check((await objective.textContent()).includes('Bring the wood'), 'collecting the bundle updates the objective');
-    await approachBruno();
-    await page.keyboard.press('Space');
-    check((await objective.textContent()).includes('house is finished'), 'returning wood completes the quest');
-    check((await info(page)).houseFinished, 'the finished house replaces its frame');
-    await page.evaluate(() => {
-      window.WB.warp(-14, -10);
-      window.WB.lookAt(-17, -13);
-      window.WB.sim(0.3);
-    });
-    await shot(page, '14-finished-house');
+    const visit = async (x, z, label) => {
+      const walkable = await page.evaluate(([x, z]) => {
+        window.WB.warp(x, z);
+        window.WB.sim(0.25);
+        return window.WB.walkable(x, z);
+      }, [x, z]);
+      check(walkable, label + ' approach is walkable');
+      await page.keyboard.press('Space');
+    };
+    check((await objective.textContent()).includes('Bramble Creek'), 'Bruno lends the hatchet and gives directions');
+    await visit(46, -22, 'creek wood');
+    check((await info(page)).progress.inventory.wood === 3, 'hatchet yields wood');
+    await visit(-12, -13.5, 'workbench');
+    check((await info(page)).progress.inventory.planks === 3, 'workbench crafts planks');
+    await visit(-14, -11, 'cottage');
+    check((await info(page)).houseFinished, 'the finished cottage replaces its frame');
+    await visit(52, -27, 'meadow stone');
+    await visit(7, 5.8, 'bakery');
+    check((await info(page)).progress.built.bakery.stone === 3, 'partial delivery installs the bakery oven');
+
+    await page.reload();
+    await page.waitForFunction(() => window.READY, null, { timeout: 60000 });
+    await page.keyboard.press('Enter');
+    check((await info(page)).progress.built.bakery.stone === 3, 'partial construction survives reload');
+    await visit(-5, -32, 'woods wood');
+    await visit(-38, 1, 'orchard apples');
+    await visit(-12, -13.5, 'workbench');
+    await visit(7, 5.8, 'bakery');
+    check((await info(page)).progress.photos.includes('bakery'), 'completed bakery gets a portrait');
+    await visit(-85, -37, 'cave copper');
+    await visit(-58, -24, 'highland stone');
+    await visit(-12, -13.5, 'workbench');
+    check((await info(page)).progress.inventory.lantern === 1, 'workbench crafts the lantern');
+    await visit(72, -37, 'watchtower');
+    check((await info(page)).progress.built.beacon.lantern === 1, 'lantern lights the watchtower');
+
+    await page.reload();
+    await page.waitForFunction(() => window.READY, null, { timeout: 60000 });
+    await page.keyboard.press('Enter');
+    await page.locator('#open-album').click();
+    await page.waitForFunction(() => {
+      const photos = [...document.querySelectorAll('#album img')];
+      return photos.length === 3 && photos.every(photo => photo.complete && photo.naturalWidth > 0);
+    }, null, { timeout: 20000 });
+    check(await page.locator('#album figure').count() === 3, 'all three portraits load from device storage');
+    await shot(page, '14-rebuild-album');
     check(errors.length === 0, 'no page errors on the keyboard route or quest', errors.join(' | '));
   } catch (error) {
     console.error('Last player state:', JSON.stringify(await info(page).catch(() => null)));
