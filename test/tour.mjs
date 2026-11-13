@@ -8,8 +8,9 @@ import { launchBrowser } from './browser.mjs';
 const OUT = path.join(ROOT, 'test-results');
 fs.mkdirSync(OUT, { recursive: true });
 const only = process.argv[2];
-const srv = await serve();
-const BASE = `http://127.0.0.1:${srv.address().port}/?test`;
+// WB_URL=https://hambonesoftware.github.io/willowbend/ runs the same tour against the live site
+const srv = process.env.WB_URL ? null : await serve();
+const BASE = process.env.WB_URL ? process.env.WB_URL.replace(/\/?$/, '/') + '?test' : `http://127.0.0.1:${srv.address().port}/?test`;
 const browser = await launchBrowser();
 let fails = 0, passes = 0;
 const check = (ok, msg, extra = '') => { if (ok) passes++; else fails++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${msg}${extra ? '  ' + extra : ''}`); };
@@ -150,6 +151,6 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + '.png
 }
 
 await browser.close();
-srv.close();
+srv?.close();
 console.log(`\n${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);
