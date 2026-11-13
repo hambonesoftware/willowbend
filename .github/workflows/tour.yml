@@ -1,0 +1,28 @@
+name: Browser tour
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tour:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm test
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: willowbend-tour
+          path: test-results/

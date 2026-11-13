@@ -45,6 +45,8 @@
   #zone.show { transform: translate(-50%, 0); }
   #zone small { display: block; font-size: 12px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: #b06a4a; text-align: center; margin-bottom: -2px; }
   #help { position: absolute; left: 16px; bottom: calc(14px + env(safe-area-inset-bottom)); padding: 6px 14px 7px; font-size: 14px; font-weight: 500; }
+  #objective { position: absolute; top: calc(14px + env(safe-area-inset-top)); left: 14px; padding: 7px 13px; max-width: min(245px, 38vw); font-size: 15px; }
+  body.touch #objective { top: auto; bottom: calc(14px + env(safe-area-inset-bottom)); max-width: min(240px, 55vw); }
   #help b { display: inline-block; min-width: 1.2em; padding: 0 4px; margin: 0 2px; border: 2px solid var(--ink); border-radius: 6px; background: #fff; text-align: center; font-weight: 700; font-size: 12px; }
   #prompt { position: absolute; left: 0; top: 0; padding: 4px 12px 5px; font-size: 15px; white-space: nowrap; transform: translate(-50%, -100%); display: none; }
   #prompt b { color: #ff7a59; }
@@ -78,7 +80,8 @@
 </div>
 <div id="hud">
   <div id="zone" class="pill"><small>now entering</small><span></span></div>
-  <div id="help" class="pill"><b>W</b><b>A</b><b>S</b><b>D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Q</b><b>E</b> or drag to turn &nbsp; <b>&minus;</b><b>+</b> or wheel to zoom &nbsp; <b>Space</b> talk</div>
+  <div id="help" class="pill"><b>W</b><b>A</b><b>S</b><b>D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Q</b><b>E</b> or drag to turn &nbsp; <b>&minus;</b><b>+</b> or wheel to zoom &nbsp; <b>Space</b> interact</div>
+  <div id="objective" class="pill" role="status" hidden></div>
   <div id="prompt" class="pill"></div>
   <div id="bubble"><span class="who"></span><span class="say"></span></div>
   <div id="stick"><div id="knob"></div></div>

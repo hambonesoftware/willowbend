@@ -208,7 +208,19 @@ export function buildWorld(scene) {
     add(P.bush(x - fz * 2.4 + fx * 1.2, z + fx * 2.4 + fz * 1.2, 0.8, 0x58b05c, pick(PETALS)));
   }
   W.homes = { cat: [-10, -9], bunny: [11, 13], bear: [-17, -13], duck: [15, 3], dog: [8, -14], frog: [-11, 12] };
-  add(P.frame(-17, -13, toPlaza(-17, -13)));
+  const [houseX, houseZ] = W.homes.bear;
+  const houseFacing = toPlaza(houseX, houseZ);
+  const frame = P.frame(houseX, houseZ, houseFacing);
+  const house = P.cottage(houseX, houseZ, houseFacing, { wall: 0xffe2c8, roof: 0xd7754f, door: 0x3fa7a0 });
+  const frameScenery = bake(frame);
+  const houseScenery = bake(house);
+  scene.add(frameScenery, houseScenery);
+  houseScenery.visible = false;
+  W.house = houseScenery;
+  W.finishHouse = () => {
+    frameScenery.visible = false;
+    houseScenery.visible = true;
+  };
   add(P.logPile(-20.5, -10.5, 0.9));
   add(P.stall(7, 8.5, toPlaza(7, 8.5)));
   add(P.noticeBoard(-4.4, 9, P.facing(-4.4, 9, 0, 9)));
@@ -243,6 +255,19 @@ export function buildWorld(scene) {
 
   // the creek and its bridge
   add(P.bridge(BRIDGE.x0, BRIDGE.x1, BRIDGE.z, bridgeDeck));
+  const wood = P.logPile(46, -23.7, 0.45, false);
+  const woodSign = P.signboard('BRUNO’S WOOD', 0, 0, 0.9);
+  woodSign.position.y = 0.45;
+  wood.add(woodSign);
+  wood.visible = false;
+  scene.add(wood);
+  W.wood = wood;
+
+  // A roadside stop between the bridge and the climb to the watchtower.
+  add(P.signpost(43, -18.5, -0.45, [['WATCHTOWER →', 0.2, 0.05], ['← WILLOWBEND', -0.2, -0.05]]));
+  add(P.bench(51, -21, P.facing(51, -21, 45, -24)));
+  add(P.lamp(52.8, -21.1));
+  add(P.signpost(55, -22.5, -0.35, [['MEADOW REST', 0.15, 0.05], ['TOWER PATH ↑', -0.2, -0.05]]));
 
   // the woods, and the glade at their heart
   const G = SITES.glade;
@@ -325,6 +350,12 @@ export function buildWorld(scene) {
   });
 
   // ---------- bake ----------
+  for (const [x, z] of [[47.5, -19], [53.5, -19.2], [56, -21]]) {
+    for (let i = 0; i < 5; i++) {
+      add(P.flower(x + rand(-0.7, 0.7), z + rand(-0.55, 0.55), PETALS[i]));
+    }
+  }
+
   const baked = bake(root, 64);
   scene.add(baked);
   W.stats = baked.userData.stats;

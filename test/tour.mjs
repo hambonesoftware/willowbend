@@ -11,7 +11,10 @@ const only = process.argv[2];
 // WB_URL=https://hambonesoftware.github.io/willowbend/ runs the same tour against the live site
 const srv = process.env.WB_URL ? null : await serve();
 const BASE = process.env.WB_URL ? process.env.WB_URL.replace(/\/?$/, '/') + '?test' : `http://127.0.0.1:${srv.address().port}/?test`;
-const browser = await launchBrowser();
+const browser = await launchBrowser().catch(error => {
+  srv?.close();
+  throw error;
+});
 let fails = 0, passes = 0;
 const check = (ok, msg, extra = '') => { if (ok) passes++; else fails++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${msg}${extra ? '  ' + extra : ''}`); };
 
@@ -21,13 +24,30 @@ async function open(opts) {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  await page.goto(BASE, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.READY, null, { timeout: 180000 });
+  try {
+    const response = await page.goto(BASE, { waitUntil: 'load' });
+    if (!response?.ok()) throw new Error('Tour page returned HTTP ' + response?.status());
+    await page.waitForFunction(() => window.READY, null, { timeout: 60000 });
+  } catch (error) {
+    await shot(page, 'startup-failure').catch(() => {});
+    throw new Error('Could not start Willowbend at ' + BASE + ': ' + errors.join(' | '), { cause: error });
+  }
   return { page, context, errors };
 }
 const info = page => page.evaluate(() => window.WB.info());
-const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + '.png') });
+const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + '.png'), timeout: 60000 });
+async function holdUntil(page, key, predicate, target) {
+  await page.keyboard.down(key);
+  try {
+    await page.waitForFunction(predicate, target, { timeout: 75000 });
+  } finally {
+    await page.keyboard.up(key);
+  }
+}
 
+try {
+
+if (only !== 'route') {
 {
   const { page, context, errors } = await open({ viewport: { width: 1280, height: 720 } });
   const t0 = await info(page);
@@ -88,6 +108,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + '.png
   const SPOTS = [
     ['05-bridge', 22, -29, 31, -21, 'Bramble Creek'],
     ['06-tower', 61, -28, 76, -38, 'Old Watchtower'],
+    ['06-meadow-rest', 51, -24, 52, -21, 'Meadow Rest'],
     ['07-glade', -10, -76, -12, -91, 'Elder Tree Glade'],
     ['08-cave', -78, -34, -91, -38, 'Echo Cave'],
     ['09-pond', -18, 44, -34, 42, 'Lily Pond'],
@@ -122,14 +143,17 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + '.png
   await page.evaluate(() => window.WB.sim(2.4));
   const a = await info(page);
   check(a.started, 'phone: a tap starts the game');
-  // drag the floating joystick with a real touch, then hold it via the hook while time runs
+  // Hold a real touch while the game loop advances.
   const cdp = await context.newCDPSession(page);
   const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
   await touch('touchStart', 90, 700); await touch('touchMove', 90, 660); await touch('touchMove', 90, 640);
   const stick = await page.evaluate(() => getComputedStyle(document.getElementById('stick')).display);
   check(stick === 'block', 'phone: touching the left side shows the joystick');
-  await touch('touchEnd', 0, 0);
-  await page.evaluate(() => { window.WB.joy(0, -1); window.WB.sim(2.5); window.WB.joy(0, 0); });
+  try {
+    await page.waitForFunction(z => window.WB.info().z < z - 6, a.z, { timeout: 75000 });
+  } finally {
+    await touch('touchEnd', 0, 0);
+  }
   const b = await info(page);
   check(b.z < a.z - 6, 'phone: pushing the stick walks the kid', `z ${a.z} -> ${b.z}`);
   // right side drags the camera round
@@ -150,7 +174,65 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + '.png
   await context.close();
 }
 
-await browser.close();
-srv?.close();
+}
+
+if (!only || only === 'route') {
+  const { page, context, errors } = await open({ viewport: { width: 1000, height: 650 } });
+  try {
+    await page.keyboard.press('Enter');
+    await page.keyboard.down('Shift');
+    // Stay on the south road, pass the plaza's well on its east side, then approach the bridge.
+    await holdUntil(page, 'KeyW', z => window.WB.info().z < z, 3.5);
+    await holdUntil(page, 'KeyD', x => window.WB.info().x > x, 8);
+    await holdUntil(page, 'KeyW', z => window.WB.info().z < z, -8);
+    await holdUntil(page, 'KeyD', x => window.WB.info().x > x, 18);
+    await holdUntil(page, 'KeyW', z => window.WB.info().z < z, -20.4);
+    await holdUntil(page, 'KeyD', x => window.WB.info().x > x, 40.5);
+    check((await info(page)).x > 40.5, 'keyboard-only route crosses the bridge from the splash');
+    await page.keyboard.up('Shift');
+
+    // Use focused fixtures for the quest transitions, then interact through the normal controls.
+    const approachBruno = () => page.evaluate(() => {
+      const { x, z } = window.WB.villager('Bruno');
+      window.WB.warp(x, z + 1);
+      window.WB.lookAt(x, z);
+      window.WB.sim(0.2);
+    });
+    await approachBruno();
+    await page.keyboard.press('Space');
+    const objective = page.locator('#objective');
+    await objective.waitFor({ state: 'visible', timeout: 5000 });
+    check((await objective.textContent()).includes('across Bramble Creek'), 'Bruno gives directions to the wood');
+    await page.evaluate(() => {
+      window.WB.warp(46, -22);
+      window.WB.lookAt(46, -23.7);
+      window.WB.sim(0.2);
+    });
+    check((await page.locator('#prompt').textContent()).includes('Pick up wood'), 'the marked pile offers pickup');
+    await page.keyboard.press('Space');
+    check((await objective.textContent()).includes('Bring the wood'), 'collecting the bundle updates the objective');
+    await approachBruno();
+    await page.keyboard.press('Space');
+    check((await objective.textContent()).includes('house is finished'), 'returning wood completes the quest');
+    check((await info(page)).houseFinished, 'the finished house replaces its frame');
+    await page.evaluate(() => {
+      window.WB.warp(-14, -10);
+      window.WB.lookAt(-17, -13);
+      window.WB.sim(0.3);
+    });
+    await shot(page, '14-finished-house');
+    check(errors.length === 0, 'no page errors on the keyboard route or quest', errors.join(' | '));
+  } catch (error) {
+    console.error('Last player state:', JSON.stringify(await info(page).catch(() => null)));
+    await shot(page, 'route-failure').catch(() => {});
+    throw error;
+  } finally {
+    await context.close();
+  }
+}
+} finally {
+  await browser.close();
+  srv?.close();
+}
 console.log(`\n${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);
