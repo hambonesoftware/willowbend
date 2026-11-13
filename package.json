@@ -1,0 +1,12 @@
+{
+  "name": "willowbend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node test/serve.mjs 8934",
+    "test": "node test/tour.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.49.1"
+  }
+}
