@@ -56,7 +56,7 @@ export function frame(x, z, ry) {
   for (let i = 0; i < 3; i++) g.add(at(box(w - 0.1, 0.3, 0.07, 0xf4e2bd, 0.022, 0.02), 0, 0.42 + i * 0.34, -d / 2));
   for (const [lx, ly] of [[-0.19, 0.17], [0.19, 0.17], [0, 0.47]]) { const log = cyl(0.17, 0.17, 1.7, 0xb8824e, T, 12); log.rotation.x = Math.PI / 2; g.add(at(log, -w / 2 - 0.8 + lx, ly, 0.5)); }
   // a little sign: what it needs
-  g.add(signboard('NEEDS: 10 WOOD', 0.4, w / 2 + 0.9, 0.6));
+  g.add(signboard('NEEDS: WOOD', 0.4, w / 2 + 0.9, 0.6));
   place(g, x, z, ry);
   addSolid(x, z, 1.9);
   return g;
@@ -380,14 +380,14 @@ export function dock(x, z, ry, y) {
   g.position.set(x, y + 0.35, z); g.rotation.y = ry;
   return g;
 }
-export function logPile(x, z, ry) {
+export function logPile(x, z, ry, solid = true) {
   const g = new THREE.Group();
   for (const [lx, ly] of [[-0.19, 0.17], [0.19, 0.17], [0.57, 0.17], [-0.57, 0.17], [0, 0.47], [0.38, 0.47], [-0.38, 0.47], [0.19, 0.77], [-0.19, 0.77]]) {
     const l = cyl(0.17, 0.17, 1.6, 0xb8824e, 0.028, 10); l.rotation.x = Math.PI / 2; g.add(at(l, lx, ly, 0));
     g.add(at(flat(new THREE.CircleGeometry(0.13, 10), 0xf0cf96), lx, ly, 0.81));
   }
   place(g, x, z, ry);
-  addSolid(x, z, 0.9);
+  if (solid) addSolid(x, z, 0.9);
   return g;
 }
 

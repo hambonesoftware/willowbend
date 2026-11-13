@@ -110,6 +110,7 @@ export function zoneAt(x, z) {
   if (polyDist(RIVER, x, z) < 10) return 'Bramble Creek';
   if (z < -28 && x < 24) return 'Whispering Woods';
   if (x < -52) return 'Pebble Highlands';
+  if (d(7, 51, -23)) return 'Meadow Rest';
   if (x > 36) return 'Sunny Meadow';
   return 'The Wilds';
 }

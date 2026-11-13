@@ -40,7 +40,7 @@ scene.add(player.root);
 const CAST = [
   { name: 'Mabel', make: makeCat, home: world.homes.cat, lines: ['Morning! The well water tastes like clouds today.', 'I heard something humming inside Echo Cave. Brr!', 'If you find nice wood, Bruno needs it for the new house.'] },
   { name: 'Pip', make: makeBunny, home: world.homes.bunny, lines: ['The orchard apples are almost ripe!', 'Have you seen the old watchtower across the creek?', 'I planted carrots. Well, I tried to.'] },
-  { name: 'Bruno', make: makeBear, home: world.homes.bear, lines: ['One more house and this village gets a bakery!', 'Ten good logs. That\'s all I need. Ten!', 'Measure twice, hammer once.'] },
+  { name: 'Bruno', make: makeBear, home: world.homes.bear, lines: [] },
   { name: 'Dot', make: makeDuck, home: world.homes.duck, lines: ['Quack! Oh, sorry. Hello!', 'The lily pond is the best place for a nap.', 'Someone lives inside the Elder Tree. I saw a light!'] },
   { name: 'Biscuit', make: makeDog, home: world.homes.dog, lines: ['Wanna race to the bridge? ...Maybe later.', 'I buried something in the woods. I forget where.', 'Every path out of town goes somewhere good!'] },
   { name: 'Fennel', make: makeFrog, home: world.homes.frog, lines: ['Ribbit. The creek is extra sparkly at noon.', 'The highlands are rocky, but the view is worth it.', 'I collect shiny pebbles. Want to see? No? Okay.'] },
@@ -98,11 +98,11 @@ resize();
 const keys = new Set();
 const input = { mx: 0, mz: 0, run: false, turn: 0 };
 let started = false;
-const startKeys = e => { if (!started) { start(); e.preventDefault?.(); } };
+const startKeys = e => { if (!started) { start(); e.preventDefault(); } };
 addEventListener('keydown', e => {
   if (!started) { if (!splash.classList.contains('loading')) startKeys(e); return; }
   keys.add(e.code);
-  if (e.code === 'Space' || e.code === 'Enter') { talk(); e.preventDefault(); }
+  if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) interact(); e.preventDefault(); }
 });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
@@ -144,7 +144,7 @@ canvasEl.addEventListener('pointercancel', endPointer);
 // zooming out also lowers the camera, so pulling back shows the horizon and the landmarks
 const zoom = d => { cam.dist = clamp(d, 7, 24); cam.pitch = lerp(0.64, 0.26, (cam.dist - 7) / 17); };
 canvasEl.addEventListener('wheel', e => zoom(cam.dist + e.deltaY * 0.01), { passive: true });
-$('talk').addEventListener('pointerdown', e => { e.stopPropagation(); talk(); });
+$('talk').addEventListener('click', interact);
 
 function readInput() {
   let mx = 0, mz = 0;
@@ -215,6 +215,8 @@ function updateVillager(v, dt) {
   else if (dp < 2.8 && started) {
     v.ry = turnTo(v.ry, Math.atan2(dpx, dpz), Math.min(1, dt * 6));
     if (v.state === 'walk') { v.state = 'idle'; v.timer = rand(1, 2); }
+  } else if (v === byName.Bruno && (quest === 'fetch' || quest === 'return')) {
+    // Bruno waits where he gave the player the errand.
   } else if (v.state === 'idle') {
     v.timer -= dt;
     if (v.timer <= 0) {
@@ -244,14 +246,52 @@ function updateVillager(v, dt) {
 
 // ---------- talking ----------
 const promptEl = $('prompt'), bubble = $('bubble'), talkBtn = $('talk');
+const objective = $('objective');
+const objectives = {
+  fetch: 'Follow the east road across Bramble Creek. Pick up the marked logs.',
+  return: 'Bring the wood back to Bruno in the village.',
+  done: 'Bruno’s house is finished. Look for its red roof northwest of the plaza.',
+};
+let quest = 'offer';
 let near = null, speaking = null;
-function talk() {
-  if (!started || !near) return;
+
+function setQuest(next) {
+  quest = next;
+  world.wood.visible = next === 'fetch';
+  objective.hidden = false;
+  objective.textContent = objectives[next];
+}
+
+function brunoLine() {
+  if (quest === 'offer') {
+    setQuest('fetch');
+    return 'Could you bring me a bundle of wood? Take the east road over Bramble Creek. I marked the logs just past the bridge.';
+  }
+  if (quest === 'fetch') return 'Look for my sign by the logs on the far side of the bridge.';
+  if (quest === 'return') {
+    world.finishHouse();
+    setQuest('done');
+    return 'You found it! The house is finished. Come see it northwest of the plaza!';
+  }
+  return 'Thanks for helping me finish the house!';
+}
+
+function nearWood() {
+  const { x, z } = world.wood.position;
+  return world.wood.visible && Math.hypot(pl.x - x, pl.z - z) < 2.2;
+}
+
+function interact() {
+  if (!started) return;
+  if (nearWood()) {
+    setQuest('return');
+    return;
+  }
+  if (!near) return;
   speaking = near;
-  near.talkT = 4.5;
+  near.talkT = near === byName.Bruno ? 7 : 4.5;
   bubble.querySelector('.who').textContent = near.name;
-  bubble.querySelector('.say').textContent = near.lines[near.line % near.lines.length];
-  near.line++;
+  bubble.querySelector('.say').textContent = near === byName.Bruno ? brunoLine() : near.lines[near.line++ % near.lines.length];
   near.c.root.userData.hop = 0.35;
 }
 const proj = new THREE.Vector3();
@@ -263,7 +303,9 @@ function updateTalk(dt) {
   near = null;
   let best = 2.6;
   if (started) for (const v of CAST) { const d = Math.hypot(v.x - pl.x, v.z - pl.z); if (d < best) { best = d; near = v; } }
-  talkBtn.classList.toggle('near', !!near);
+  const collect = started && nearWood();
+  talkBtn.classList.toggle('near', !!near || collect);
+  talkBtn.textContent = collect ? 'Pick up' : 'Talk';
   if (speaking) {
     speaking.talkT -= dt;
     if (speaking.talkT <= 0 || Math.hypot(speaking.x - pl.x, speaking.z - pl.z) > 4.5) speaking = null;
@@ -273,9 +315,11 @@ function updateTalk(dt) {
     bubble.style.display = p.on ? 'block' : 'none';
     bubble.style.left = p.x + 'px'; bubble.style.top = p.y + 'px';
   } else bubble.style.display = 'none';
-  if (near && near !== speaking) {
-    const p = screenAt(near.x, near.c.root.position.y + 2.5, near.z);
-    promptEl.innerHTML = touch ? `${near.name}` : `<b>Space</b> Talk to ${near.name}`;
+  if (collect || (near && near !== speaking)) {
+    const target = collect ? world.wood.position : near.c.root.position;
+    const p = screenAt(target.x, target.y + (collect ? 1.5 : 2.5), target.z);
+    const label = collect ? 'Pick up wood' : 'Talk to ' + near.name;
+    promptEl.textContent = touch ? label : 'Space · ' + label;
     promptEl.style.display = p.on ? 'block' : 'none';
     promptEl.style.left = p.x + 'px'; promptEl.style.top = p.y + 'px';
   } else promptEl.style.display = 'none';
@@ -351,7 +395,7 @@ if (TEST) {
   window.WB = {
     start,
     info: () => ({
-      started, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
+      started, houseFinished: world.house.visible, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
       speaking: speaking?.name ?? null, yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
       villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state })),
     }),
@@ -363,7 +407,6 @@ if (TEST) {
       for (const k of hold) keys.delete(k);
       renderer.render(scene, camera);
     },
-    joy(x, y) { joy.id = x || y ? -1 : null; joy.x = x; joy.y = y; },
     face(ry) { pl.ry = ry; },
     zoom,
     lookAt(x, z) { cam.yaw = Math.atan2(-(x - pl.x), -(z - pl.z)); cam.x = pl.x; cam.z = pl.z; cam.y = groundAt(pl.x, pl.z); },
