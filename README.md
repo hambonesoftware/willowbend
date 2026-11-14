@@ -24,6 +24,12 @@ Use the action button near a marked resource, the workbench, or a building site.
 
 Progress and photos save to this browser’s local storage. Keep using the same browser or home-screen installation to resume. Storage sharing between these modes depends on your browser. Clearing the game’s site data also clears the save. Playing requires a connection to load the game and Three.js.
 
+## Backpack and supplies
+
+Open **Backpack** from the HUD or press **B**. Supplies stack with no weight or slot limit. Tools and items needed for an active job have their own sections.
+
+Choose **Give an item** or **Take supplies** when talking to a villager. Pick an item and how many to transfer. Villagers start with different supplies and hold on to anything you give them so you can take it back later. Your backpack and each villager’s supplies are saved on the device.
+
 ## Talk and listen
 
 Talk to any villager to pick a topic. You can ask for directions, personal stories, town news, or a reminder of your active jobs. Villagers mention work you have underway even if someone else gave you the job. Use the job topic with the villager who assigned it to accept or turn in work.
