@@ -175,6 +175,16 @@ if (only !== 'route') {
   await page.evaluate(() => window.WB.sim(0.3));
   const d = await info(page);
   check(d.speaking === 'Pip', 'phone: tapping Talk starts the chat', d.speaking);
+  await page.getByRole('button', { name: 'Where should I go?' }).tap();
+  const speech = page.locator('#villager-speech');
+  await speech.waitFor({ state: 'visible' });
+  const bounds = await speech.boundingBox();
+  check(!(await page.locator('#conversation').isVisible()) && bounds.x >= 0 && bounds.x + bounds.width <= 390,
+    'phone: the answer appears in a speech bubble within the screen');
+  await speech.locator('#speech-more').selectOption({ label: 'Active jobs' });
+  check((await speech.locator('#speech-reply').textContent()).includes('jobs underway'),
+    'phone: a follow-up updates the bubble without reopening the picker');
+  await shot(page, '13-phone-speech-bubble');
   await shot(page, '13-phone-talk');
   check(errors.length === 0, 'no page errors (phone)', errors.join(' | '));
   await context.close();
@@ -207,7 +217,9 @@ if (!only || only === 'route') {
     const conversation = page.locator('#conversation');
     const choose = async label => {
       await conversation.getByRole('button', { name: label }).click();
-      await closeConversation(page);
+      await page.locator('#villager-speech').waitFor({ state: 'visible' });
+      await page.locator('#speech-close').click();
+      await page.waitForFunction(() => document.activeElement?.id === 'c');
     };
     await approachBruno();
     await page.keyboard.press('Space');
@@ -233,12 +245,15 @@ if (!only || only === 'route') {
     check((await conversation.locator('#conversation-reply').textContent()).includes('Bramble Creek'),
       'a different villager notices the active cottage job');
     await conversation.getByRole('button', { name: 'Where should I go?' }).click();
-    check((await conversation.locator('#conversation-reply').textContent()).includes('east road'),
-      'direction topic gives a personal answer');
-    await conversation.getByRole('button', { name: 'Active jobs' }).click();
-    check((await conversation.locator('#conversation-reply').textContent()).includes('Gather branches'),
+    const speech = page.locator('#villager-speech');
+    await speech.waitFor({ state: 'visible' });
+    check(!(await conversation.isVisible()) && (await speech.locator('#speech-reply').textContent()).includes('east road'),
+      'choosing directions closes the picker and shows an in-world answer');
+    await page.locator('#speech-more').selectOption({ label: 'Active jobs' });
+    await speech.waitFor({ state: 'visible' });
+    check((await speech.locator('#speech-reply').textContent()).includes('Gather branches'),
       'active jobs topic repeats the next step without changing progress');
-    await closeConversation(page);
+    await page.locator('#speech-close').click();
     const voices = await page.evaluate(() => {
       window.WB.warp(4, 4);
       window.WB.positionVillager('Mabel', 5, 4);
