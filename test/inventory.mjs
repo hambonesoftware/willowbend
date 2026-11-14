@@ -26,7 +26,7 @@ try {
     await page.evaluate(() => {
       WB.warp(1, 23);
       WB.positionVillager('Mabel', -6, 23);
-      WB.positionVillager('Pip', 1, 23);
+      WB.positionVillager('Pip', 2.2, 22.1);
       WB.positionVillager('Hazel', -6, 26);
       WB.sim(.12);
     });
@@ -49,7 +49,7 @@ try {
   assert.equal((await info()).speaking, 'Pip');
   assert.equal(await bag.locator('[data-item=apples] img').evaluate(el => el.complete && el.naturalWidth > 0), true);
   const box = await bag.boundingBox();
-  assert.ok(box.y > 200 && box.y + box.height >= 843, 'phone backpack is a bottom sheet');
+  assert.ok(box.y > 200 && box.y + box.height >= 843 && box.width === 390, 'phone backpack fills the bottom edge');
   await button('Tools', bag).tap();
   assert.match(await bag.innerText(), /Bruno can lend you tools/);
   await button('Supplies', bag).tap();
@@ -99,8 +99,33 @@ try {
   assert.ok(landscape.x > 410, 'wide backpack stays to the side');
   assert.ok(landscape.y + landscape.height <= 390, 'wide backpack stays inside the viewport');
   await page.screenshot({ path: 'test-results/inventory-wide.png' });
+  await button('Close', bag).tap();
+  await page.evaluate(() => {
+    WB.warp(0, 4);
+    WB.sim(.12);
+  });
+  await page.locator('#talk').tap();
+  await button('Take planks').tap();
+  await button('Take planks').tap();
+  await button('Close', page.locator('#journal')).tap();
+  await page.evaluate(() => {
+    WB.warp(1, 23);
+    WB.positionVillager('Pip', -6, 23);
+    WB.positionVillager('Bruno', 2.2, 22.1);
+    WB.sim(.12);
+  });
+  await button('Talk').tap();
+  await button('Exchange items').tap();
+  await button('Planks, 2 available', exchange).tap();
+  await button('All', exchange).tap();
+  await button('Give', exchange).tap();
+  assert.match(await page.locator('#speech-reply').innerText(), /shelf Hazel asked for/);
+  const afterGift = await info();
+  assert.equal(afterGift.life.marketShelf, true);
+  assert.equal(afterGift.progress.inventory.planks, 0);
+  assert.match(afterGift.life.bonds.Bruno.memories.join(' '), /market shelf/);
   assert.deepEqual(errors, []);
-  console.log('Phone pickup, illustrated backpack, gift, remembered response after reload, reduced motion, quantity controls, cancellation, and villager stock passed.');
+  console.log('Phone pickup, illustrated backpack, gift, remembered response after reload, reduced motion, quantity controls, cancellation, villager stock, and the market shelf gift passed.');
 } catch (error) {
   if (page && !page.isClosed()) {
     await mkdir('test-results', { recursive: true });
