@@ -165,6 +165,29 @@
   /* touch */
   #stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; background: rgba(255, 249, 234, 0.35); border: 3px solid rgba(75, 49, 64, 0.5); display: none; }
   #knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: var(--cream); border: 3px solid var(--ink); box-shadow: 0 3px 0 var(--ink); }
+  #day-clock { position:absolute; top:14px; left:14px; padding:6px 10px; font-size:13px; }
+  #project-hud { top:52px; }
+  #hud-actions #open-journal { background:#ffe7af; }
+  #journal { width:min(510px,84vw); max-height:78dvh; overflow:auto; padding:15px; color:var(--ink); background:var(--cream); border:3px solid var(--ink); border-radius:17px; }
+  #journal.scene-sheet { position:fixed; top:auto; bottom:calc(16px + env(safe-area-inset-bottom)); z-index:4;
+    width:min(630px,calc(100vw - 56px)); max-height:45dvh; box-shadow:0 5px 0 var(--ink); }
+  #journal.scene-sheet p { margin:7px 0; }
+  #journal header { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  #journal h2 { margin:0; }
+  #journal button { min-height:38px; padding:5px 11px; font:inherit; color:inherit; cursor:pointer; }
+  #journal details { margin:9px 0; padding:7px 9px; background:#fff1d9; border:1px solid #96715e; border-radius:9px; }
+  #journal summary { cursor:pointer; }
+  #journal-options { display:flex; gap:8px; flex-wrap:wrap; }
+  #activity { position:absolute; bottom:75px; right:14px; width:min(285px,80vw); padding:9px 14px; font-size:14px; border-radius:12px; }
+  .timing-track { position:relative; height:14px; margin-top:8px; border-radius:8px; border:1px solid #9b765c;
+    background:linear-gradient(to right,#d5b693 var(--start),#aacf8e var(--start) var(--end),#d5b693 var(--end)); }
+  .timing-track::after { content:""; position:absolute; top:-4px; bottom:-4px; width:4px; border-radius:2px;
+    left:var(--position); transform:translateX(-50%); background:#422d36; }
+  .timing-track meter { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  #weather { position:absolute; inset:0; background:repeating-linear-gradient(108deg,transparent 0 43px,#a9c9eb55 44px,transparent 45px 72px); animation:rain .65s linear infinite; pointer-events:none; }
+  @keyframes rain { to { background-position:72px 74px; } }
+  @media(max-width:640px) { #day-clock { top:55px; } #hud-actions { gap:4px; } }
+  @media(prefers-reduced-motion:reduce) { #weather { animation:none; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -182,6 +205,9 @@
   <div id="loading">Planting the village&hellip;</div>
 </div>
 <div id="hud">
+  <div id="weather" hidden></div>
+  <div id="day-clock" class="pill" hidden></div>
+  <div id="activity" class="pill" hidden><span></span><div class="timing-track"><meter max="2" value="0" aria-label="Timing cycle"></meter></div></div>
   <div id="zone" class="pill"><small>now entering</small><span></span></div>
   <div id="help" class="pill"><b>W</b><b>A</b><b>S</b><b>D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Q</b><b>E</b> or drag to turn &nbsp; <b>&minus;</b><b>+</b> or wheel to zoom &nbsp; <b>Space</b> interact &nbsp; <b>B</b> backpack</div>
   <div id="project-hud">
@@ -189,6 +215,7 @@
   </div>
   <div id="hud-actions">
     <button id="open-backpack" class="pill" type="button">Backpack</button>
+    <button id="open-journal" class="pill" type="button">Journal</button>
     <button id="open-album" class="pill" type="button">Photo album</button>
   </div>
   <div id="prompt" class="pill"></div>
@@ -219,6 +246,11 @@
     <button id="talk" class="pill" type="button" aria-keyshortcuts="Space Enter" aria-controls="conversation-panel" hidden><span id="talk-label">Talk</span><kbd aria-hidden="true">Space</kbd></button>
   </div>
 </div>
+<dialog id="journal" aria-labelledby="journal-title">
+  <header><h2 id="journal-title"></h2><form method="dialog"><button class="pill">Close</button></form></header>
+  <div id="journal-content"></div>
+  <div id="journal-options"></div>
+</dialog>
 <dialog id="backpack" aria-labelledby="backpack-title">
   <header><h2 id="backpack-title">Backpack</h2><form method="dialog"><button class="pill">Close</button></form></header>
   <h3>Supplies</h3>

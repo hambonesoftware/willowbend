@@ -11,7 +11,7 @@ permissions:
 jobs:
   tour:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 16
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -21,6 +21,7 @@ jobs:
       - run: npm ci
       - run: npx playwright-core install --with-deps chromium
       - run: npm test
+      - run: npm run test:story
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
