@@ -276,6 +276,7 @@ const done = name => complete(progress, name);
 const nearPoint = (x, z) => Math.hypot(pl.x - x, pl.z - z) < 2.2;
 
 function refreshProjects(message) {
+  objective.hidden = !started;
   const cottage = done('cottage'), bakery = done('bakery'), beacon = done('beacon');
   world.showNeighborhood(progress, bakery, done);
   world.showErrands(progress.errands);
