@@ -1,5 +1,6 @@
 // Builds the land, water, paths, sky and every piece of scenery, then bakes the static parts.
 import * as THREE from 'three';
+import { lifeScenery } from './life-scenery.js';
 import { RAMP, flat, glowTex, bake, ball, at, cone, mesh, box } from './gfx.js';
 import { reseed, rand, rng, pick, fbm, smooth, lerp, polyDist } from './util.js';
 import {
@@ -19,7 +20,8 @@ export function buildWorld(scene) {
   scene.background = new THREE.Color(SKY.mid);
 
   // ---------- light ----------
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xe6d4b8, 1.8));
+  const daylight = new THREE.HemisphereLight(0xffffff, 0xe6d4b8, 1.8);
+  scene.add(daylight);
   const sun = new THREE.DirectionalLight(0xfff1d8, 1.45);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -467,12 +469,38 @@ export function buildWorld(scene) {
   scene.add(bal);
   W.balloon = bal;
 
-  W.update = (dt, t, cam) => {
+  const villageLife = lifeScenery(scene, {
+    cottage: { x: houseX, z: houseZ, facing: houseFacing, visible: () => houseScenery.visible },
+    bakery: { x: bx, z: bz, facing: toPlaza(bx, bz), width: 3.4, visible: () => bakery.visible },
+  });
+  W.setLife = villageLife.sync;
+  W.gather = villageLife.gather;
+  const nightTop = new THREE.Color(0x172c58), nightMid = new THREE.Color(0x42567c), nightGround = new THREE.Color(0x6d6e8c);
+  const dayTop = new THREE.Color(SKY.top), dayMid = new THREE.Color(SKY.mid), dayGround = new THREE.Color(SKY.bot);
+  const seasonFog = new THREE.Color();
+  const dayColors = { Spring: SKY.fog, Summer: 0xe8e9cd, Autumn: 0xf4debe, Winter: 0xd9e8f7 };
+  let lighting = '';
+  W.update = (dt, t, cam, day, racePoint, festival) => {
+    villageLife.update(dt, racePoint, day);
+    const state = day.phase + day.season + day.weather + festival;
+    if (state !== lighting) {
+      lighting = state;
+      const darkness = day.phase === 'Night' ? .83 : day.phase === 'Evening' ? .35 : day.weather === 'Rain' ? .22 : 0;
+      daylight.intensity = lerp(1.8, festival ? 1.22 : .85, darkness);
+      sun.intensity = lerp(1.45, .22, darkness);
+      sun.color.setHex(day.phase === 'Evening' ? 0xffbb86 : 0xfff1d8);
+      sky.material.uniforms.top.value.copy(dayTop).lerp(nightTop, darkness);
+      sky.material.uniforms.mid.value.copy(dayMid).lerp(nightMid, darkness);
+      sky.material.uniforms.bot.value.copy(dayGround).lerp(nightGround, darkness);
+      seasonFog.setHex(dayColors[day.season] ?? SKY.fog);
+      scene.fog.color.copy(seasonFog).lerp(nightMid, darkness);
+      W.sunDisk.visible = day.phase !== 'Night' && day.weather !== 'Rain';
+    }
     sky.position.copy(cam.position);
     W.sunDisk.position.set(cam.position.x + 260, 150, cam.position.z - 330);
     W.sunDisk.lookAt(cam.position);
     for (const cl of W.clouds) {
-      cl.position.x += cl.userData.speed * dt;
+      cl.position.x += cl.userData.speed * dt * (day.weather === 'Breezy' ? 1.6 : 1);
       if (cl.position.x > 340) cl.position.x = -340;
       cl.lookAt(cam.position.x, cl.position.y, cam.position.z);
     }

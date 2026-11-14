@@ -1,6 +1,6 @@
 # Willowbend
 
-Willowbend is a small cel-shaded village you can explore in a browser. Talk to Bruno to borrow a hatchet and begin rebuilding the cottage, bakery, and watchtower beacon.
+Willowbend is a small cel-shaded village you can explore in a browser. Show Mabel the old postcard to find a home and discover why the village stopped celebrating Lantern Night.
 
 ## Run locally
 
@@ -12,6 +12,14 @@ npm run serve
 ```
 
 Open http://127.0.0.1:8934/. The browser needs WebGL and access to jsDelivr for Three.js.
+
+## The Lanterns of Willowbend
+
+Show Mabel the postcard on the south road. Then choose whether to help Pip bake or help Bruno repair a door first. Your cottage lets you change your outfit, decorate the porch, and rest until morning. Open the journal to read letters, review friendships, and find the next story lead. The mystery leads from the Elder Tree through Echo Cave to the old watchtower.
+
+A day lasts about 22 minutes of play. Conversations and menus pause the clock, and you can rest to start a new day. Villagers have places to visit at different times of day. Friendships grow through visits, gifts, and time together. You can race Biscuit, look for buried treasure, fish at Lily Pond, tend the cottage garden, or take a scrapbook photo at Farmgate Market.
+
+Gathered supplies return the next morning. The crate near the well holds shared supplies and accepts donations. Villagers can pitch in on building projects. Once Mabel welcomes you, the workbench lets you choose a plank batch. Celebrate at the well after solving the mystery and restoring the bakery and beacon. Return to the well in the evening after Lantern Night to catch up with your neighbors.
 
 ## Controls
 
@@ -50,6 +58,6 @@ Return to the board to assign Pip’s apple delivery and Bruno’s timber haul. 
 
 ## Browser tour
 
-Run `npm test` with Edge or Chrome installed. Set `BROWSER_PATH` for a different Chromium executable, or install Playwright Chromium with `npx playwright-core install chromium`. The tour saves screenshots to `test-results/`.
+Run `npm test` with Edge or Chrome installed. Set `BROWSER_PATH` for a different Chromium executable, or install Playwright Chromium with `npx playwright-core install chromium`. Run `npm run test:story` for the Lantern Night browser playthrough. The tour saves screenshots to `test-results/`. The story suite takes a screenshot on failure and replays the festival decision on a touch viewport.
 
 To check a deployment that includes the same test hooks and features, set `WB_URL` to its base URL before running `npm test`. The [GitHub Pages site](https://hambonesoftware.github.io/willowbend/) is served from the repository.

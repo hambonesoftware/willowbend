@@ -1,3 +1,5 @@
+import { chapter, remember } from './life.js';
+import { villageLife } from './village-life.js';
 import { greetings, topics, chatter } from './dialogue.js';
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
@@ -39,6 +41,10 @@ const world = buildWorld(scene);
 // ---------- the cast ----------
 const player = makeKid();
 scene.add(player.root);
+const hat = new THREE.Mesh(new THREE.SphereGeometry(.38, 20, 14), new THREE.MeshToonMaterial({ color: 0x639777 }));
+hat.position.set(.08, .53, -.03);
+hat.scale.y = .44;
+player.head.add(hat);
 const CAST = [
   { name: 'Mabel', make: makeCat, home: world.homes.cat, lines: ['Morning! The well water tastes like clouds today.', 'I heard something humming inside Echo Cave. Brr!', 'If you find nice wood, Bruno needs it for the new house.'] },
   { name: 'Pip', make: makeBunny, home: world.homes.bunny, lines: ['The orchard apples are almost ripe!', 'Have you seen the old watchtower across the creek?', 'I planted carrots. Well, I tried to.'] },
@@ -59,7 +65,7 @@ const byName = Object.fromEntries(CAST.map(v => [v.name, v]));
 
 // The opening shot: the gang lined up on the south road with the village behind them.
 const POSE = {
-  kid: [0.15, 19.7, -0.05], Mabel: [-2.55, 19.0, 0.28], Pip: [2.7, 19.1, -0.3], Bruno: [5.2, 16.9, -0.35],
+  kid: [0.15, 19.7, -0.05], Mabel: [-1.95, 19.0, 0.28], Pip: [2.7, 19.1, -0.3], Bruno: [5.2, 16.9, -0.35],
   Dot: [-6.5, 12.5, 0.6], Biscuit: [3.5, 9.5, -0.2], Fennel: [-4.8, 15.4, 0.45],
 };
 const SPLASH_CAM = { pos: new THREE.Vector3(0, 3.6, 30.5), look: new THREE.Vector3(0, 2.2, 16) };
@@ -147,7 +153,11 @@ let started = false;
 const startKeys = e => { if (!started) { start(); e.preventDefault(); } };
 addEventListener('keydown', e => {
   if (!started) { if (!splash.classList.contains('loading')) startKeys(e); return; }
-  if (document.querySelector('dialog[open]')) return;
+  const openDialog = document.querySelector('dialog[open]');
+  if (openDialog) {
+    if (e.code === 'Escape' && openDialog.classList.contains('scene-sheet')) openDialog.close();
+    return;
+  }
   if (speaking && e.code === 'Escape') {
     if (!e.repeat) endConversation();
     e.preventDefault();
@@ -248,6 +258,7 @@ function start() {
   for (const v of CAST) { v.state = 'idle'; v.timer = rand(0.3, 2.5); }
   lastZone = null;
   refreshProjects();
+  updateTalk();
 }
 
 // ---------- moving ----------
@@ -301,11 +312,25 @@ function updateVillager(v, dt) {
     v.c.root.rotation.y = v.ry;
     return 0;
   }
-  let speed = started ? updateWorker(v, dt) : null;
+  let speed = started && !life.festival ? updateWorker(v, dt) : null;
   if (speed !== null) {
     v.c.root.position.set(v.x, groundAt(v.x, v.z), v.z);
     v.c.root.rotation.y = v.ry;
     return speed;
+  }
+  const destination = started && life.destination(v);
+  if (destination && (dp >= 2.35 || progress.life.lantern === 'invited' && v.name === 'Dot')) {
+    const dx = destination[0] - v.x, dz = destination[1] - v.z;
+    const distance = Math.hypot(dx, dz);
+    let pace = 0;
+    if (distance > 0.6) {
+      const step = Math.min(dt * 2.6, distance);
+      v.ry = turnTo(v.ry, Math.atan2(dx, dz), Math.min(1, dt * 6));
+      pace = move(v, step * dx / distance, step * dz / distance) ||
+        move(v, -step * dz / distance, step * dx / distance) ? 2.6 : 0;
+    }
+    setPose(v.c, v.x, v.z, v.ry);
+    return pace;
   }
   speed = 0;
   if (v.state === 'pose') { /* holding the opening shot */ }
@@ -359,10 +384,14 @@ function refreshProjects(message) {
   for (const node of deposits) {
     const unlocked = node.id === 'creek' ? progress.started
       : ['grove', 'quarry', 'meadow-apples', 'cave'].includes(node.id) ? bakery : cottage;
-    world.deposits.get(node.id).visible = unlocked && !progress.gathered.includes(node.id);
+    world.deposits.get(node.id).visible = unlocked && (progress.life.harvests[node.id] ?? -1) < life.day.day;
   }
-  const next = !progress.started ? 'Talk to Bruno to help rebuild Willowbend.'
-    : !cottage ? (progress.inventory.planks >= 3 ? 'Bring the planks to Bruno or the cottage northwest of the plaza.'
+  world.setLife(progress.life);
+  const outfit = progress.life.home.outfit;
+  hat.material.color.setHex({ Moss: 0x639777, Berry: 0xbc5277, Sky: 0x69a1d6 }[outfit]);
+  hat.visible = !!progress.life.arrival;
+  const next = !progress.started ? 'Show Mabel your postcard or talk to Bruno about rebuilding.'
+    : !cottage ? (progress.inventory.planks >= projects.cottage.needs.planks ? 'Bring the planks to Bruno or the cottage northwest of the plaza.'
       : progress.inventory.wood ? 'Craft planks at Bruno’s temporary bench.' : 'Cross Bramble Creek and cut the marked branches with your hatchet.')
     : !bakery ? 'Bakery needs ' + remaining(progress, 'bakery') + '. Gather wood in the woods, stone past the bridge, and apples at the orchard.'
     : !beacon ? 'Beacon needs ' + remaining(progress, 'beacon') + '. Mine copper by Echo Cave and stone in the highlands. Craft a lantern at the workbench.'
@@ -370,11 +399,13 @@ function refreshProjects(message) {
       : 'Plan the new neighborhood at the Meadow Planning board beyond Bramble Creek.';
   const errands = villageJobs.filter(job => ['active', 'carrying'].includes(progress.errands[job.id]))
     .map(job => progress.errands[job.id] === 'carrying' ? job.delivery : job.pickup);
-  objective.textContent = [message, next, ...errands].filter(Boolean).join(' ');
+  objective.textContent = [message, progress.life.arrival ? chapter(progress.life, done)[1] : next, ...errands].filter(Boolean).join(' ');
 }
 
 function renderAlbum() {
-  const entries = Object.entries(projects).filter(([name]) => progress.photos[name] || progress.photos[name + '-before']);
+  const albumProjects = { ...projects, 'lantern-night': { title: 'Lantern Night', villagers: ['Mabel', 'Pip', 'Bruno', 'Dot', 'Clover'] },
+    scrapbook: { title: 'Farmgate scrapbook', villagers: ['Mabel', 'Hazel'] } };
+  const entries = Object.entries(albumProjects).filter(([name]) => progress.photos[name] || progress.photos[name + '-before']);
   const pages = $('album-pages');
   pages.replaceChildren();
   for (const [name, project] of entries) {
@@ -489,6 +520,7 @@ exchange.addEventListener('submit', event => {
     exchangeStatus.textContent = 'Choose an available quantity.';
     return;
   }
+  if (giving) life.give(villager.name, item);
   const [label, plural] = itemNames[item];
   const singular = { planks: 'plank', apples: 'apple' }[item] ?? label.toLowerCase();
   const amount = count + ' ' + (count === 1 ? singular : plural);
@@ -504,7 +536,9 @@ function takePhoto(name, project = projects[name]) {
   const [ax, az] = project.photoSpot ?? project.approach;
   const forward = new THREE.Vector3(ax - x, 0, az - z).normalize();
   const right = new THREE.Vector3(forward.z, 0, -forward.x);
-  const group = [makeKid(), ...project.villagers.map(villager => byName[villager].make())];
+  const guest = makeKid();
+  if (hat.visible) guest.head.add(hat.clone());
+  const group = [guest, ...project.villagers.map(villager => byName[villager].make())];
   const portrait = new THREE.PerspectiveCamera(name === 'beacon' ? 55 : 41, 1.5, 0.5, 900);
   const distance = name === 'opening' ? 10 : 7;
   portrait.position.set(ax + forward.x * distance, groundAt(ax, az) + 3.6, az + forward.z * distance);
@@ -545,12 +579,23 @@ function commitProgress(message) {
 }
 
 function build(name) {
+  const { stock, contributions, arrival } = progress.life;
+  let donation;
+  if (arrival && !contributions[name]) {
+    donation = Object.keys(projects[name].needs).find(item => stock[item] > 0 && projects[name].needs[item] > (progress.built[name][item] ?? 0));
+    if (donation) {
+      stock[donation]--;
+      progress.built[name][donation] = (progress.built[name][donation] ?? 0) + 1;
+      contributions[name] = donation;
+    }
+  }
+  const help = donation ? projects[name].villagers[0] + ' brought ' + donation + ' from the village supplies. ' : '';
   const added = contribute(progress, name);
-  if (!added.length) return refreshProjects('Still needed: ' + remaining(progress, name) + '.');
-  if (!done(name)) return commitProgress('Delivered ' + added.join(', ') + '.');
+  if (!added.length && !done(name)) return commitProgress(help + 'Still needed: ' + remaining(progress, name) + '.');
+  if (!done(name)) return commitProgress(help + 'Delivered ' + added.join(', ') + '.');
   refreshProjects();
   const photographed = takePhoto(name);
-  commitProgress(projects[name].title + ' is finished!' + (photographed ? ' Group photo added to the album.' : ' The group photo could not be captured.'));
+  commitProgress(help + projects[name].title + ' is finished!' + (photographed ? ' Group photo added to the album.' : ' The group photo could not be captured.'));
 }
 
 const planner = $('planner');
@@ -646,6 +691,7 @@ function updateWorker(v, dt) {
   const destination = plotProject(progress, v.name === 'Pip' ? 'bakehouse' : 'workshop').approach;
   if (worker === 'delivered') {
     if (v.cargo) v.cargo.visible = false;
+    if (progress.opening && progress.life.arrival) return null;
     [v.x, v.z] = destination;
     return 0;
   }
@@ -682,6 +728,7 @@ function updateWorker(v, dt) {
 }
 
 function craft() {
+  if (progress.life.arrival) return life.recipes();
   const stock = progress.inventory;
   if (stock.wood) {
     const count = stock.wood;
@@ -699,6 +746,11 @@ function craft() {
 
 function nearbyAction() {
   if (!started) return null;
+  const villageAction = life.action(nearPoint);
+  if (villageAction) {
+    const [x, z] = villageAction.spot;
+    return { position: { x, y: groundAt(x, z), z }, label: villageAction.label, run: villageAction.run };
+  }
   for (const job of villageJobs) {
     if (progress.errands[job.id] !== 'active' || !nearPoint(...job.stop)) continue;
     const [x, z] = job.stop;
@@ -714,7 +766,11 @@ function nearbyAction() {
     const label = node.tool ? (node.tool === 'Hatchet' ? 'Chop ' : 'Mine ') + node.name : 'Harvest apples';
     return { position: prop.position, label, run() {
       progress.inventory[node.kind] += node.amount;
-      progress.gathered.push(node.id);
+      if (!progress.gathered.includes(node.id)) progress.gathered.push(node.id);
+      progress.life.harvests[node.id] = life.day.day;
+      harvestGesture = { kind: node.kind, left: .55 };
+      pl.ry = Math.atan2(node.x - pl.x, node.z - pl.z);
+      world.gather(prop, node.kind);
       commitProgress('Gathered ' + node.amount + ' ' + node.kind + '.');
     } };
   }
@@ -747,7 +803,7 @@ function brunoLine() {
     build('cottage');
     return 'Thanks for bringing the planks!';
   }
-  if (!done('cottage')) return 'My bench is northwest of the plaza, next to the cottage frame. I need three planks.';
+  if (!done('cottage')) return 'My bench is northwest of the plaza, next to the cottage frame. I need two planks.';
   if (!done('bakery')) return 'Your pickaxe is ready. Pip left an apple basket at the orchard. The bakery frame is southeast of the plaza.';
   if (!done('beacon')) return 'Dot spotted copper at Echo Cave. Bring two pieces to the workbench to craft the lantern.';
   return 'The beacon is shining. Look how far we’ve come!';
@@ -760,6 +816,11 @@ function villagerLine(villager) {
     if (state === 'done') return 'Thanks for helping with my stall. See you around town!';
     if (state === 'carrying') {
       progress.errands[job.id] = 'done';
+      if (progress.life.arrival) {
+        const reward = { market: ['planks', 2], pond: ['stone', 2], orchard: ['apples', 3] }[job.id];
+        progress.life.stock[reward[0]] += reward[1];
+        remember(progress.life, villager.name, 'Finished ' + job.title.toLowerCase() + ' together.', 2);
+      }
       refreshProjects();
       const photographed = takePhoto(job.id);
       commitProgress(job.title + ' completed.' + (photographed ? ' Group photo added.' : ''));
@@ -795,6 +856,7 @@ const speechName = $('speech-name');
 const speechReply = $('speech-reply');
 const speechAnnouncement = $('speech-announcement');
 let speechGesture = 0;
+let harvestGesture = null;
 let chat = null, chatDelay = 2, lastPair = '';
 const overheard = [];
 const heardTopics = new Map();
@@ -897,14 +959,18 @@ function greet(villager) {
     villager.name === 'Reed' ? 'You made it back from the dock! How’s the trail?' :
       villager.name === 'Hazel' ? 'You found the flowers! I saved a spot for them.' : 'Are those the cider apples? I’ll get the press ready.';
   if (villager.job && progress.errands[villager.job.id] === 'active') return villager.job.line;
+  const errand = villageJobs.find(job => ['active', 'carrying'].includes(progress.errands[job.id]));
+  if (errand) return 'How’s your errand for ' + errand.villager + ' coming along?';
+  const activity = life.activityGreeting(villager.name);
+  if (activity) return activity;
+  const shared = life.helpMessage(villager.name);
+  if (shared) return shared;
   if (activeJobs().length) {
     if (!done('cottage') && villager !== byName.Bruno && progress.started) {
-      if (progress.inventory.planks >= 3) return 'Those planks are for Bruno, right? He’s waiting for you.';
+      if (progress.inventory.planks >= projects.cottage.needs.planks) return 'Those planks are for Bruno, right? He’s waiting for you.';
       if (progress.inventory.wood) return 'That wood looks sturdy. Have you found Bruno’s workbench?';
       return 'Out gathering for Bruno? Follow the east road across Bramble Creek.';
     }
-    const errand = villageJobs.find(job => ['active', 'carrying'].includes(progress.errands[job.id]));
-    if (errand) return 'How’s your errand for ' + errand.villager + ' coming along?';
     return 'Hey! How’s your work around town coming along?';
   }
   return greetings[villager.name];
@@ -963,6 +1029,7 @@ function stepBackForTalk(dt) {
 }
 
 function openConversation(villager) {
+  life.visit(villager.name);
   speaking = villager;
   pl.vx = pl.vz = 0;
   keys.clear();
@@ -991,7 +1058,10 @@ function conversationChoices(villager) {
     main.push(option(activeJobs().length ? 'Active jobs' : 'What’s new?', () => activeJobs().length ? jobReply(activeJobs()) : villagerLine(villager)));
   }
   main.push(option('Where should I go?', () => topics[villager.name][1]));
+  const scenes = life.topics(villager.name, words => showAnswer(villager, words));
+  if (scenes.length && !delivery) main.push(scenes.shift());
   const more = [
+    ...scenes,
     option('How’s life in Willowbend?', () => topics[villager.name][0]),
     option('Active jobs', () => jobReply(activeJobs())),
     option('Village news', () => progress.opening ? 'The meadow neighborhood is open. Everyone’s talking about the opening-day photograph.'
@@ -1033,6 +1103,12 @@ function updateChatter(dt) {
     captionEl.hidden = true;
     return;
   }
+  if (!speaking && unsolicited && time < unsolicited.until) {
+    captionEl.hidden = false;
+    captionEl.textContent = unsolicited.villager.name + ' · ' + unsolicited.words;
+    placeSpeech(captionEl, unsolicited.villager, 1.38);
+    return;
+  }
   if (!chat) {
     chatDelay -= dt;
     if (chatDelay > 0) return;
@@ -1055,6 +1131,12 @@ function updateChatter(dt) {
           done('bakery') ? 'There are building lots near Meadow Rest. The planning board has the details.' : 'Bruno is still getting the village buildings ready.',
         'I’ll follow the bridge road and see for myself.',
       ]];
+      if (key === 'Clover/Pip' && done('bakery') && progress.life.batch) {
+        const recipe = progress.life.recipe.toLowerCase();
+        topics.unshift(initiator.name === 'Pip' ?
+          ['I made another tray of ' + recipe + '. Can you tell which ones I burnt?', 'Obviously. I saved those for us.', 'Come by the counter. There’s plenty left.'] :
+          ['You’ve put out two trays of ' + recipe + ' today.', 'I burnt the first tray. The second one is for customers.', 'Then I know which one we’re having for breakfast.']);
+      }
       const visit = heardTopics.get(key) - 1;
       chat = { a: initiator, b: partner, lines: topics[visit % topics.length], turn: 0, left: 0 };
       lastPair = key;
@@ -1091,6 +1173,14 @@ function updateChatter(dt) {
   if (!captionEl.hidden) placeSpeech(captionEl, speaker, 1.38);
 }
 
+let unsolicited = null;
+const life = villageLife(progress, {
+  save: commitProgress, persist: () => saveProgress(progress), refresh: refreshProjects, done, photo: takePhoto,
+  whisper: (villager, words) => { unsolicited = { villager, words, until: time + 7 }; },
+  button: plannerButton, focus: restoreGameFocus, release: endConversation,
+  position: () => [pl.x, pl.z], near: (x, z, radius) => Math.hypot(pl.x - x, pl.z - z) < radius,
+});
+addEventListener('pagehide', () => saveProgress(progress));
 refreshProjects();
 
 const proj = new THREE.Vector3();
@@ -1153,8 +1243,20 @@ function tick() {
 }
 function update(dt) {
   time += dt;
-  if (started) updatePlayer(dt);
+  if (started) {
+    updatePlayer(dt);
+    life.update(dt, !!speaking || !!document.querySelector('dialog[open]'));
+  }
   animate(player, dt, time, started ? pl.speed : 0);
+  if (harvestGesture) {
+    if (!reducedMotion.matches && pl.speed < 0.2) {
+      const swing = Math.sin(Math.PI * harvestGesture.left / .55);
+      player.arms[1].rotation.x -= swing * (harvestGesture.kind === 'apples' ? .9 : 1.7);
+      if (harvestGesture.kind === 'apples') player.arms[-1].rotation.x -= swing * .9;
+    }
+    harvestGesture.left -= dt;
+    if (harvestGesture.left <= 0) harvestGesture = null;
+  }
   if (!started) player.arms[-1].rotation.z = -(2.5 + Math.sin(time * 6) * 0.22);
   for (const v of CAST) {
     const sp = updateVillager(v, dt);
@@ -1193,7 +1295,7 @@ function update(dt) {
   updateTalk();
   updateChatter(dt);
   world.follow(started ? pl.x : 0, started ? pl.z : 12);
-  world.update(dt, time, camera);
+  world.update(dt, time, camera, life.day, life.racePoint, life.festival);
 }
 tick();
 
@@ -1202,7 +1304,7 @@ if (TEST) {
     start,
     info: () => ({
       started, houseFinished: world.house.visible, progress: { inventory: { ...progress.inventory }, gathered: [...progress.gathered], built: structuredClone(progress.built), photos: Object.keys(progress.photos), plots: { ...progress.plots }, jobs: { ...progress.jobs }, opening: progress.opening, errands: { ...progress.errands } }, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
-      speaking: speaking?.name ?? null, talkBlend: talkView.blend,
+      life: structuredClone(progress.life), day: life.day, festivalActive: life.festival, speaking: speaking?.name ?? null, talkBlend: talkView.blend,
       cameraPosition: camera.position.toArray(), cameraQuaternion: camera.quaternion.toArray(),
       yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
       villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state })),
@@ -1220,6 +1322,7 @@ if (TEST) {
       for (const k of hold) keys.delete(k);
       renderer.render(scene, camera);
     },
+    passTime(seconds) { life.update(seconds, false); refreshProjects(); },
     face(ry) { pl.ry = ry; },
     zoom,
     lookAt(x, z) { cam.yaw = Math.atan2(-(x - pl.x), -(z - pl.z)); cam.x = pl.x; cam.z = pl.z; cam.y = groundAt(pl.x, pl.z); },

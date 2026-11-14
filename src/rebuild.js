@@ -1,5 +1,7 @@
+import { createLife } from './life.js';
+
 export const projects = {
-  cottage: { title: 'Bruno’s cottage', site: [-17, -13], approach: [-14, -11], photoSpot: [-17, -9], needs: { planks: 3 }, villagers: ['Bruno', 'Mabel'] },
+  cottage: { title: 'Bruno’s cottage', site: [-17, -13], approach: [-14, -11], photoSpot: [-17, -9], needs: { planks: 2 }, villagers: ['Bruno', 'Mabel'] },
   bakery: { title: 'Willowbend bakery', site: [7, 8.5], approach: [7, 5.8], needs: { planks: 4, stone: 3, apples: 3 }, villagers: ['Bruno', 'Pip'] },
   beacon: { title: 'Watchtower beacon', site: [76, -38], approach: [72, -37], needs: { lantern: 1, stone: 2 }, villagers: ['Bruno', 'Dot', 'Fennel'] },
 };
@@ -75,16 +77,24 @@ export function loadProgress() {
     const data = JSON.parse(localStorage.getItem(key));
     if (data?.version === 1) {
       data.plots ??= {};
+      data.gathered ??= [];
+      data.photos ??= {};
+      data.built ??= {};
+      data.inventory = { ...Object.fromEntries(materials.map(item => [item, 0])), ...data.inventory };
       data.jobs ??= {};
       data.errands ??= {};
       data.opening ??= false;
+      if (!data.life) {
+        data.life = createLife();
+        for (const id of data.gathered ?? []) data.life.harvests[id] = 0;
+      }
       data.villagerSupplies ??= structuredClone(startingSupplies);
       for (const name of Object.keys(projects)) data.built[name] ??= {};
       return data;
     }
   } catch {}
   return {
-    version: 1, started: false, villagerSupplies: structuredClone(startingSupplies), plots: {}, jobs: {}, errands: {}, opening: false, photos: {}, gathered: [],
+    version: 1, life: createLife(), started: false, villagerSupplies: structuredClone(startingSupplies), plots: {}, jobs: {}, errands: {}, opening: false, photos: {}, gathered: [],
     inventory: Object.fromEntries(materials.map(name => [name, 0])),
     built: Object.fromEntries(Object.keys(projects).map(name => [name, {}])),
   };
@@ -107,7 +117,7 @@ export function contribute(progress, name) {
   const paid = progress.built[name];
   const added = [];
   for (const [item, required] of Object.entries(projects[name].needs)) {
-    const count = Math.min(progress.inventory[item], required - (paid[item] ?? 0));
+    const count = Math.min(progress.inventory[item], Math.max(0, required - (paid[item] ?? 0)));
     if (!count) continue;
     progress.inventory[item] -= count;
     paid[item] = (paid[item] ?? 0) + count;
