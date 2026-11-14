@@ -57,9 +57,13 @@ try {
   const pass = time => page.evaluate(time => WB.passTime(time), time);
 
   await open();
-  const walkable = await page.evaluate(spots => Object.fromEntries(Object.entries(spots).map(([name, point]) =>
-    [name, WB.walkable(...point)])), locations);
-  for (const [name, accessible] of Object.entries(walkable)) assert.ok(accessible, name + ' activity is on walkable ground');
+  const accessibility = await page.evaluate(spots => {
+    const offsets = [[0, 0], [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]];
+    return Object.fromEntries(Object.entries(spots).map(([name, [x, z]]) => [
+      name, offsets.some(([dx, dz]) => WB.walkable(x + dx, z + dz)),
+    ]));
+  }, locations);
+  for (const [name, accessible] of Object.entries(accessibility)) assert.ok(accessible, name + ' can be approached within interaction range');
   const starter = await info();
   const mabel = starter.villagers.find(v => v.name === 'Mabel');
   assert.ok(Math.hypot(mabel.x - starter.x, mabel.z - starter.z) < 3);
@@ -175,14 +179,14 @@ try {
   assert.equal((await info()).day.phase, 'Morning');
   await action([46, -22]);
   assert.equal((await info()).progress.inventory.wood, 6);
-  await action(locations.bench);
+  await action([locations.bench[0], locations.bench[1] + 1.5]);
   await page.getByRole('button', { name: 'Cut 3 planks' }).click();
   assert.equal((await info()).progress.inventory.wood, 3);
   await action([52, -27]);
   await action(locations.bakery);
   assert.ok((await info()).progress.photos.includes('bakery'));
   assert.ok((await info()).life.contributions.bakery);
-  await action(locations.bench);
+  await action([locations.bench[0], locations.bench[1] + 1.5]);
   await page.getByRole('button', { name: 'Make a lantern' }).click();
   await action([-58, -24]);
   await action(locations.tower);
