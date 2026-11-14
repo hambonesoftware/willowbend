@@ -69,6 +69,14 @@
   #conversation-topics { display:grid; gap:10px; padding-block:8px; }
   #conversation-topics button { text-align:left; padding:9px 14px; }
   #conversation-reply { line-height:1.45; }
+  #villager-speech { position:absolute; left:50%; top:30%; transform:translateX(-50%); width:max-content; max-width:min(330px, calc(100vw - 32px)); box-sizing:border-box; padding:12px 14px; background:var(--cream); color:var(--ink); border:3px solid var(--ink); border-radius:18px; box-shadow:0 4px var(--ink); pointer-events:auto; z-index:3; }
+  #villager-speech:not(.offscreen)::after { content:''; position:absolute; top:100%; left:var(--tail, 50%); border:8px solid transparent; border-top-color:var(--ink); transform:translateX(-50%); pointer-events:none; }
+  #speech-name { display:block; font-size:14px; color:#875040; }
+  #speech-reply { margin:4px 0 10px; line-height:1.35; max-height:34vh; overflow:auto; touch-action:pan-y; }
+  #villager-speech footer { display:flex; gap:8px; }
+  #speech-more { flex:1; min-width:0; background:white; }
+  #villager-speech button, #villager-speech select { font:inherit; font-size:14px; min-height:38px; padding:4px 10px; color:inherit; cursor:pointer; }
+
   #chatter { position:absolute; bottom:66px; left:16px; max-width:min(390px, 65vw); padding:7px 12px; font-size:14px; }
   body.touch #chatter { bottom:auto; top:80px; }
 
@@ -105,6 +113,10 @@
   </div>
   <button id="open-album" class="pill" type="button">Photo album</button>
   <div id="prompt" class="pill"></div>
+  <aside id="villager-speech" hidden aria-labelledby="speech-name">
+    <div role="status"><strong id="speech-name"></strong><p id="speech-reply"></p></div>
+    <footer><select class="pill" id="speech-more" aria-label="Ask another question"></select><button class="pill" id="speech-close" type="button">Done</button></footer>
+  </aside>
   <div id="chatter" class="pill" role="log" hidden></div>
   <div id="stick"><div id="knob"></div></div>
   <button id="talk" type="button">Talk</button>

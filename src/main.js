@@ -106,7 +106,7 @@ let started = false;
 const startKeys = e => { if (!started) { start(); e.preventDefault(); } };
 addEventListener('keydown', e => {
   if (!started) { if (!splash.classList.contains('loading')) startKeys(e); return; }
-  if (document.querySelector('dialog[open]') || e.target instanceof HTMLButtonElement) return;
+  if (document.querySelector('dialog[open]') || e.target.matches?.('button, select')) return;
   keys.add(e.code);
   if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) interact(); e.preventDefault(); }
 });
@@ -631,6 +631,55 @@ function villagerLine(villager) {
 }
 
 const conversation = $('conversation');
+const speech = $('villager-speech');
+let answer = null;
+let followupChoices = [];
+
+function hideAnswer() {
+  answer = null;
+  speech.hidden = true;
+}
+
+function showAnswer(villager, words) {
+  answer = { villager, remaining: Math.max(8, 3 + words.length / 15) };
+  $('speech-name').textContent = villager.name;
+  $('speech-reply').textContent = words;
+  if (conversation.open) conversation.close();
+  const followup = $('speech-more');
+  followupChoices = conversationChoices(villager);
+  followup.replaceChildren(new Option('Ask another question…', ''), ...followupChoices.map(({ label }, index) => new Option(label, String(index))));
+  speech.hidden = false;
+}
+
+$('speech-more').addEventListener('change', event => {
+  const choice = followupChoices[event.currentTarget.value];
+  if (answer && choice) showAnswer(answer.villager, choice.reply());
+});
+$('speech-close').addEventListener('click', () => {
+  hideAnswer();
+  restoreGameFocus();
+});
+
+function updateAnswer(dt) {
+  if (!answer) return;
+  const { villager } = answer;
+  if (!speech.contains(document.activeElement)) answer.remaining -= dt;
+  if (answer.remaining <= 0 || Math.hypot(villager.x - pl.x, villager.z - pl.z) > 6) {
+    const focused = speech.contains(document.activeElement);
+    hideAnswer();
+    if (focused) restoreGameFocus();
+    return;
+  }
+  const p = screenAt(villager.x, villager.c.root.position.y + 2.65, villager.z);
+  const width = speech.offsetWidth;
+  const height = speech.offsetHeight;
+  const x = p.on ? clamp(p.x, 12 + width / 2, innerWidth - 12 - width / 2) : innerWidth / 2;
+  const y = clamp(p.on ? p.y - 14 : innerHeight * 0.65, 54 + height, innerHeight - 20);
+  speech.style.left = x + 'px';
+  speech.style.top = (y - height) + 'px';
+  speech.style.setProperty('--tail', clamp(p.x - x + width / 2, 18, width - 18) + 'px');
+  speech.classList.toggle('offscreen', !p.on || p.x < 0 || p.x > innerWidth || p.y < 0 || p.y > innerHeight);
+}
 let chat = null, chatDelay = 2, lastPair = '';
 const overheard = [];
 const heardTopics = new Map();
@@ -660,6 +709,7 @@ function jobReply(jobs) {
 }
 
 function openConversation(villager) {
+  hideAnswer();
   speaking = villager;
   keys.clear();
   chat = null;
@@ -667,14 +717,21 @@ function openConversation(villager) {
   chatDelay = 2;
   $('conversation-name').textContent = villager.name;
   const words = $('conversation-reply');
-  const choices = $('conversation-topics');
   const jobs = activeJobs();
-  const first = topics[villager.name][0];
   words.textContent = jobs.length ? 'You’re in the middle of ' + jobs.length + (jobs.length === 1 ? ' job' : ' jobs') + '. ' + jobReply(jobs)
     : 'Good to see you. What would you like to talk about?';
+  const choices = $('conversation-topics');
   choices.replaceChildren();
-  const option = (label, reply) => plannerButton(choices, label, () => { words.textContent = reply(); });
-  option('How’s life in Willowbend?', () => first);
+  for (const { label, reply } of conversationChoices(villager)) {
+    plannerButton(choices, label, () => showAnswer(villager, reply()));
+  }
+  conversation.showModal();
+}
+
+function conversationChoices(villager) {
+  const choices = [];
+  const option = (label, reply) => choices.push({ label, reply });
+  option('How’s life in Willowbend?', () => topics[villager.name][0]);
   option('Where should I go?', () => topics[villager.name][1]);
   option('Active jobs', () => jobReply(activeJobs()));
   if (villager.job || villager === byName.Bruno) {
@@ -682,21 +739,13 @@ function openConversation(villager) {
     const state = job && progress.errands[job.id];
     const label = state === 'carrying' ? job.delivery : job && !state ? 'Start job · ' + job.title
       : job ? 'Talk about ' + job.title.toLowerCase() : 'Talk about rebuilding';
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'pill';
-    button.textContent = label;
-    button.addEventListener('click', () => {
-      words.textContent = villagerLine(villager);
-      button.disabled = true;
-    });
-    choices.append(button);
+    option(label, () => villagerLine(villager));
   } else option('What’s new?', () => villagerLine(villager));
   option('Village news', () => progress.opening ? 'The meadow neighborhood is open. Everyone’s talking about the opening-day photograph.'
     : done('bakery') ? 'The bakery is open. The next big thing is the neighborhood across Bramble Creek.'
     : 'Bruno is looking for help rebuilding. Hazel, Reed, and Clover also have work available.');
-  if (overheard.length) option('What have people been saying?', () => overheard.slice(-3).join(' '));
-  conversation.showModal();
+  if (overheard.length) option('What have people been saying?', () => 'I heard this nearby. “' + overheard.at(-1).split(' · ').slice(1).join(' · ') + '”');
+  return choices;
 }
 
 conversation.addEventListener('close', () => {
@@ -777,7 +826,7 @@ refreshProjects();
 const proj = new THREE.Vector3();
 function screenAt(x, y, z) {
   proj.set(x, y, z).project(camera);
-  return { x: (proj.x * 0.5 + 0.5) * innerWidth, y: (-proj.y * 0.5 + 0.5) * innerHeight, on: proj.z < 1 };
+  return { x: (proj.x * 0.5 + 0.5) * innerWidth, y: (-proj.y * 0.5 + 0.5) * innerHeight, on: proj.z >= -1 && proj.z <= 1 };
 }
 function updateTalk(dt) {
   near = null;
@@ -857,7 +906,9 @@ function update(dt) {
     }
     camera.position.copy(tmpPos);
     camera.lookAt(tmpLook);
+    camera.updateMatrixWorld();
   }
+  updateAnswer(dt);
   world.follow(started ? pl.x : 0, started ? pl.z : 12);
   world.update(dt, time, camera);
 }
