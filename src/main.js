@@ -4,7 +4,7 @@ import { buildWorld } from './world.js';
 import { makeKid, makeCat, makeBunny, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
 import { groundAt, walkable, zoneAt, height, WATER } from './layout.js';
 import { rand, clamp, lerp } from './util.js';
-import { projects, deposits, workbench, materials, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject, villageJobs } from './rebuild.js';
+import { projects, deposits, workbench, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject, villageJobs, itemNames, moveItems } from './rebuild.js';
 
 const $ = id => document.getElementById(id);
 const TEST = /[?&](test|debug)\b/.test(location.search);
@@ -107,6 +107,7 @@ const startKeys = e => { if (!started) { start(); e.preventDefault(); } };
 addEventListener('keydown', e => {
   if (!started) { if (!splash.classList.contains('loading')) startKeys(e); return; }
   if (document.querySelector('dialog[open]') || e.target.matches?.('button, select')) return;
+  if (e.code === 'KeyB' && !e.repeat) { openBackpack(); e.preventDefault(); return; }
   keys.add(e.code);
   if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) interact(); e.preventDefault(); }
 });
@@ -268,7 +269,6 @@ function updateVillager(v, dt) {
 // ---------- talking ----------
 const promptEl = $('prompt'), talkBtn = $('talk');
 const objective = $('objective');
-const inventory = $('inventory');
 const album = $('album');
 const progress = loadProgress();
 let near = null, speaking = null;
@@ -285,11 +285,6 @@ function refreshProjects(message) {
       : ['grove', 'quarry', 'meadow-apples', 'cave'].includes(node.id) ? bakery : cottage;
     world.deposits.get(node.id).visible = unlocked && !progress.gathered.includes(node.id);
   }
-  inventory.hidden = !started || !progress.started;
-  objective.hidden = !started;
-  const stock = materials.filter(item => progress.inventory[item] > 0)
-    .map(item => progress.inventory[item] + ' ' + item).join(' · ');
-  inventory.textContent = [cottage ? 'Hatchet · Pickaxe' : 'Hatchet', stock].filter(Boolean).join(' | ');
   const next = !progress.started ? 'Talk to Bruno to help rebuild Willowbend.'
     : !cottage ? (progress.inventory.planks >= 3 ? 'Bring the planks to Bruno or the cottage northwest of the plaza.'
       : progress.inventory.wood ? 'Craft planks at Bruno’s temporary bench.' : 'Cross Bramble Creek and cut the marked branches with your hatchet.')
@@ -339,8 +334,94 @@ $('open-album').addEventListener('click', () => {
 });
 function restoreGameFocus() {
   keys.clear();
-  canvasEl.focus({ preventScroll: true });
+  if (!document.querySelector('dialog[open]')) canvasEl.focus({ preventScroll: true });
 }
+const backpack = $('backpack');
+const exchange = $('exchange');
+const exchangeForm = $('exchange-form');
+const exchangeItem = $('exchange-item');
+const exchangeCount = $('exchange-count');
+const exchangeStatus = $('exchange-status');
+let handoff = null;
+
+function stockedItems(stock) {
+  return Object.keys(itemNames).filter(item => stock[item] > 0);
+}
+
+function itemRow(label, count) {
+  const row = document.createElement('li');
+  const name = document.createElement('span');
+  const quantity = document.createElement('strong');
+  name.textContent = label;
+  quantity.textContent = count;
+  row.append(name, quantity);
+  return row;
+}
+
+function openBackpack() {
+  if (!started || document.querySelector('dialog[open]')) return;
+  keys.clear();
+  const items = stockedItems(progress.inventory);
+  $('backpack-items').replaceChildren(...items.map(item => itemRow(itemNames[item][0], progress.inventory[item])));
+  $('backpack-empty').hidden = items.length > 0;
+  $('backpack-tools').hidden = !progress.started;
+  $('backpack-tool-list').textContent = done('cottage') ? 'Hatchet · Pickaxe' : 'Hatchet';
+  const errands = villageJobs.filter(job => progress.errands[job.id] === 'carrying');
+  $('backpack-errands').hidden = !errands.length;
+  $('backpack-job-items').replaceChildren(...errands.map(job => itemRow(job.cargo, 1)));
+  backpack.showModal();
+}
+
+$('open-backpack').addEventListener('click', openBackpack);
+backpack.addEventListener('close', restoreGameFocus);
+exchange.addEventListener('close', restoreGameFocus);
+
+function updateExchangeCount() {
+  const available = handoff.from[exchangeItem.value];
+  exchangeCount.max = available;
+  exchangeCount.value = 1;
+  exchangeStatus.textContent = available + ' available';
+}
+
+exchangeItem.addEventListener('change', updateExchangeCount);
+
+function openExchange(villager, giving) {
+  const supplies = progress.villagerSupplies[villager.name];
+  const from = giving ? progress.inventory : supplies;
+  const to = giving ? supplies : progress.inventory;
+  const items = stockedItems(from);
+  if (!items.length) {
+    showAnswer(villager, giving ? 'Your backpack is empty. Bring something with you next time.' : 'I’m out of spare supplies right now.');
+    return;
+  }
+  handoff = { villager, giving, from, to };
+  hideAnswer();
+  if (conversation.open) conversation.close();
+  keys.clear();
+  $('exchange-title').textContent = giving ? 'Give to ' + villager.name : 'Take from ' + villager.name;
+  $('exchange-submit').textContent = giving ? 'Give' : 'Take';
+  exchangeItem.replaceChildren(...items.map(item => new Option(itemNames[item][0] + ' · ' + from[item], item)));
+  updateExchangeCount();
+  exchange.showModal();
+}
+
+exchangeForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const { villager, giving, from, to } = handoff;
+  const item = exchangeItem.value;
+  const count = exchangeCount.valueAsNumber;
+  if (!moveItems(from, to, item, count)) {
+    exchangeStatus.textContent = 'Choose an available quantity.';
+    return;
+  }
+  const [label, plural] = itemNames[item];
+  const singular = { planks: 'plank', apples: 'apple' }[item] ?? label.toLowerCase();
+  const amount = count + ' ' + (count === 1 ? singular : plural);
+  commitProgress(giving ? 'Gave ' + villager.name + ' ' + amount + '.' : 'Received ' + amount + ' from ' + villager.name + '.');
+  exchange.close();
+  showAnswer(villager, giving ? 'Thanks! I’ll keep the supplies here if you need them back.' : 'Here you go. I put ' + amount + ' in your backpack.');
+});
+
 album.addEventListener('close', restoreGameFocus);
 
 function takePhoto(name, project = projects[name]) {
@@ -653,7 +734,7 @@ function showAnswer(villager, words) {
 
 $('speech-more').addEventListener('change', event => {
   const choice = followupChoices[event.currentTarget.value];
-  if (answer && choice) showAnswer(answer.villager, choice.reply());
+  if (answer && choice) choice.run();
 });
 $('speech-close').addEventListener('click', () => {
   hideAnswer();
@@ -722,15 +803,19 @@ function openConversation(villager) {
     : 'Good to see you. What would you like to talk about?';
   const choices = $('conversation-topics');
   choices.replaceChildren();
-  for (const { label, reply } of conversationChoices(villager)) {
-    plannerButton(choices, label, () => showAnswer(villager, reply()));
+  for (const { label, run } of conversationChoices(villager)) {
+    plannerButton(choices, label, run);
   }
   conversation.showModal();
 }
 
 function conversationChoices(villager) {
   const choices = [];
-  const option = (label, reply) => choices.push({ label, reply });
+  const option = (label, reply) => choices.push({ label, run: () => showAnswer(villager, reply()) });
+  choices.push(
+    { label: 'Give an item', run: () => openExchange(villager, true) },
+    { label: 'Take supplies', run: () => openExchange(villager, false) },
+  );
   option('How’s life in Willowbend?', () => topics[villager.name][0]);
   option('Where should I go?', () => topics[villager.name][1]);
   option('Active jobs', () => jobReply(activeJobs()));

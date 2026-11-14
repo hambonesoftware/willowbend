@@ -48,15 +48,26 @@
   #objective { position: absolute; top: calc(14px + env(safe-area-inset-top)); left: 14px; padding: 7px 13px; max-width: min(245px, 38vw); font-size: 15px; }
   body.touch #objective { top: auto; bottom: calc(14px + env(safe-area-inset-bottom)); max-width: min(240px, 55vw); }
   #project-hud { position:absolute; top:calc(14px + env(safe-area-inset-top)); left:14px; width:min(260px, 46vw); display:grid; gap:6px; }
-  #project-hud #objective, #inventory { position:static; max-width:none; padding:7px 11px; font-size:13px; }
-  #open-album { position:absolute; top:calc(14px + env(safe-area-inset-top)); right:14px; padding:8px 14px; background:var(--cream); color:var(--ink); font:inherit; pointer-events:auto; cursor:pointer; }
-  #hud:not(.on) #open-album { visibility:hidden; }
+  #project-hud #objective { position:static; max-width:none; padding:7px 11px; font-size:13px; }
+  #hud-actions { position:absolute; top:calc(14px + env(safe-area-inset-top)); right:14px; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
+  #hud-actions button { padding:7px 12px; min-height:38px; background:var(--cream); color:var(--ink); font:inherit; pointer-events:auto; cursor:pointer; }
+  #hud:not(.on) #hud-actions { visibility:hidden; }
+  @media (max-width:640px) { #zone { top:calc(103px + env(safe-area-inset-top)); } #zone:not(.show) { visibility:hidden; } }
+  body.touch #hud-actions button { padding:5px 10px; min-height:36px; font-size:14px; }
+  #backpack .item-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; padding:0; list-style:none; }
+  #backpack .item-list li { display:flex; justify-content:space-between; gap:10px; background:#fff; border:2px solid #dac3aa; border-radius:12px; padding:9px 12px; }
+  #backpack h3 { font-size:16px; margin:16px 0 5px; }
+  #exchange-form { display:grid; gap:10px; }
+  #exchange-form label { display:grid; gap:4px; }
+  #exchange-form select, #exchange-form input { width:100%; box-sizing:border-box; border:2px solid var(--ink); border-radius:10px; padding:8px 10px; background:white; color:inherit; font:inherit; }
+  #exchange-form button[type=submit] { justify-self:start; min-height:42px; }
+  #exchange-status { min-height:1.4em; }
   body.touch #project-hud { top:auto; bottom:calc(14px + env(safe-area-inset-bottom)); width:min(250px, 56vw); }
-  #album, #planner, #conversation { width:min(600px, 84vw); max-height:78vh; border:3px solid var(--ink); border-radius:20px; background:var(--cream); color:var(--ink); padding:18px; }
-  #album::backdrop, #planner::backdrop, #conversation::backdrop { background:#302333a1; }
-  #album header, #planner header, #conversation header { display:flex; justify-content:space-between; align-items:center; }
-  #album h2, #planner h2, #conversation h2 { margin:0; }
-  #album button, #planner button, #conversation button { padding:5px 12px; background:white; color:inherit; font:inherit; cursor:pointer; }
+  #album, #planner, #conversation, #backpack, #exchange { width:min(600px, 84vw); max-height:78vh; border:3px solid var(--ink); border-radius:20px; background:var(--cream); color:var(--ink); padding:18px; }
+  #album::backdrop, #planner::backdrop, #conversation::backdrop, #backpack::backdrop, #exchange::backdrop { background:#302333a1; }
+  #album header, #planner header, #conversation header, #backpack header, #exchange header { display:flex; justify-content:space-between; align-items:center; }
+  #album h2, #planner h2, #conversation h2, #backpack h2, #exchange h2 { margin:0; }
+  #album button, #planner button, #conversation button, #backpack button, #exchange button { padding:5px 12px; background:white; color:inherit; font:inherit; cursor:pointer; }
   #planner section { padding:10px 0; border-bottom:1px solid #d9c4a9; }
   #planner section strong { display:block; }
   #planner button { margin:5px 5px 0 0; }
@@ -106,12 +117,14 @@
 </div>
 <div id="hud">
   <div id="zone" class="pill"><small>now entering</small><span></span></div>
-  <div id="help" class="pill"><b>W</b><b>A</b><b>S</b><b>D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Q</b><b>E</b> or drag to turn &nbsp; <b>&minus;</b><b>+</b> or wheel to zoom &nbsp; <b>Space</b> interact</div>
+  <div id="help" class="pill"><b>W</b><b>A</b><b>S</b><b>D</b> walk &nbsp; <b>Shift</b> run &nbsp; <b>Q</b><b>E</b> or drag to turn &nbsp; <b>&minus;</b><b>+</b> or wheel to zoom &nbsp; <b>Space</b> interact &nbsp; <b>B</b> backpack</div>
   <div id="project-hud">
     <div id="objective" class="pill" role="status" hidden></div>
-    <div id="inventory" class="pill" hidden></div>
   </div>
-  <button id="open-album" class="pill" type="button">Photo album</button>
+  <div id="hud-actions">
+    <button id="open-backpack" class="pill" type="button">Backpack</button>
+    <button id="open-album" class="pill" type="button">Photo album</button>
+  </div>
   <div id="prompt" class="pill"></div>
   <aside id="villager-speech" hidden aria-labelledby="speech-name">
     <div role="status"><strong id="speech-name"></strong><p id="speech-reply"></p></div>
@@ -125,6 +138,23 @@
   <header><h2 id="conversation-name"></h2><form method="dialog"><button class="pill">Goodbye</button></form></header>
   <p id="conversation-reply" role="status"></p>
   <div id="conversation-topics"></div>
+</dialog>
+<dialog id="backpack" aria-labelledby="backpack-title">
+  <header><h2 id="backpack-title">Backpack</h2><form method="dialog"><button class="pill">Close</button></form></header>
+  <h3>Supplies</h3>
+  <ul id="backpack-items" class="item-list"></ul>
+  <p id="backpack-empty">Your backpack is empty.</p>
+  <section id="backpack-tools" hidden><h3>Tools</h3><p id="backpack-tool-list"></p></section>
+  <section id="backpack-errands" hidden><h3>Job items</h3><ul id="backpack-job-items" class="item-list"></ul></section>
+</dialog>
+<dialog id="exchange" aria-labelledby="exchange-title">
+  <header><h2 id="exchange-title"></h2><form method="dialog"><button class="pill">Close</button></form></header>
+  <form id="exchange-form">
+    <label>Item<select id="exchange-item" required></select></label>
+    <label>Quantity<input id="exchange-count" type="number" min="1" step="1" inputmode="numeric" required></label>
+    <button id="exchange-submit" class="pill" type="submit"></button>
+  </form>
+  <p id="exchange-status" role="status"></p>
 </dialog>
 <dialog id="album" aria-labelledby="album-title">
   <header><h2 id="album-title">Photo album</h2><form method="dialog"><button class="pill">Close</button></form></header>

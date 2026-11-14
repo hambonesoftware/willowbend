@@ -43,6 +43,33 @@ export const workbench = [-12, -12];
 const key = 'willowbend-rebuild-v1';
 export const materials = ['wood', 'planks', 'stone', 'apples', 'copper', 'lantern'];
 
+export const itemNames = {
+  wood: ['Wood', 'wood'],
+  planks: ['Planks', 'planks'],
+  stone: ['Stone', 'stone'],
+  apples: ['Apples', 'apples'],
+  copper: ['Copper', 'copper'],
+  lantern: ['Lantern', 'lanterns'],
+  bread: ['Bread', 'bread'],
+  cider: ['Cider', 'cider'],
+  pebble: ['Polished pebble', 'polished pebbles'],
+};
+
+const startingSupplies = {
+  Mabel: { wood: 1 }, Pip: { apples: 2, bread: 1 }, Bruno: { planks: 1 },
+  Dot: { stone: 1 }, Biscuit: { wood: 2 }, Fennel: { stone: 2, pebble: 1 },
+  Hazel: { apples: 1 }, Reed: { stone: 1 }, Clover: { apples: 3, cider: 1 },
+};
+
+export function moveItems(from, to, item, count) {
+  if (!Object.hasOwn(itemNames, item) || !Number.isSafeInteger(count) || count < 1 || count > (from[item] ?? 0)) return false;
+  const total = (to[item] ?? 0) + count;
+  if (!Number.isSafeInteger(total)) return false;
+  from[item] -= count;
+  to[item] = total;
+  return true;
+}
+
 export function loadProgress() {
   try {
     const data = JSON.parse(localStorage.getItem(key));
@@ -51,12 +78,13 @@ export function loadProgress() {
       data.jobs ??= {};
       data.errands ??= {};
       data.opening ??= false;
+      data.villagerSupplies ??= structuredClone(startingSupplies);
       for (const name of Object.keys(projects)) data.built[name] ??= {};
       return data;
     }
   } catch {}
   return {
-    version: 1, started: false, plots: {}, jobs: {}, errands: {}, opening: false, photos: {}, gathered: [],
+    version: 1, started: false, villagerSupplies: structuredClone(startingSupplies), plots: {}, jobs: {}, errands: {}, opening: false, photos: {}, gathered: [],
     inventory: Object.fromEntries(materials.map(name => [name, 0])),
     built: Object.fromEntries(Object.keys(projects).map(name => [name, {}])),
   };
