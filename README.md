@@ -28,11 +28,13 @@ Progress and photos save to this browser’s local storage. Keep using the same 
 
 Open **Backpack** from the HUD or press **B**. Supplies stack with no weight or slot limit. Tools and items needed for an active job have their own sections.
 
-Choose **Give an item** or **Take supplies** when talking to a villager. Pick an item and how many to transfer. Villagers start with different supplies and hold on to anything you give them so you can take it back later. Your backpack and each villager’s supplies are saved on the device.
+While talking, choose **Ask**, then **More topics** for **Give an item** and **Take supplies**. Pick an item and how many to transfer. Villagers start with different supplies and hold on to anything you give them so you can take it back later. Your backpack and each villager’s supplies are saved on the device.
 
 ## Talk and listen
 
-Talk to any villager to pick a topic. You can ask for directions, personal stories, town news, or a reminder of your active jobs. Villagers mention work you have underway even if someone else gave you the job. Use the job topic with the villager who assigned it to accept or turn in work.
+Use **Talk** near a villager. The camera moves closer and they greet you in a speech bubble. **Ask** brings up replies and questions at the bottom of the screen. You can ask for directions, personal stories, town news, or a reminder of your active jobs. If you’re carrying something a villager is waiting for, the action button offers to deliver it, with **Ask** alongside it.
+
+**Space** or **Enter** uses the contextual action. While the reply strip is open, you can choose a reply by tapping it or using **Tab** and **Enter**. The number keys also select replies in order. Walk away, select **Goodbye**, or press **Esc** to return to your previous camera view.
 
 Nearby villagers also stop, face each other, and talk. Their exchanges appear on screen as you explore, and you can ask a villager what you recently overheard.
 
