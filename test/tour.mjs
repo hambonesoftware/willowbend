@@ -75,23 +75,60 @@ if (only !== 'route') {
   check(walkedVillagers === 9, 'villagers leave their opening poses');
   await shot(page, '03-walking');
 
-  await page.evaluate(() => window.WB.sim(0.6, ['KeyW']));
-  const walkSpeed = (await info(page)).speed;
-  await page.evaluate(() => { window.WB.warp(1, 28); window.WB.lookAt(1, 60); window.WB.sim(0.6, ['KeyW', 'ShiftLeft']); });
-  const runSpeed = (await info(page)).speed;
-  check(runSpeed > walkSpeed * 1.5, 'Shift runs', `walk ${walkSpeed}, run ${runSpeed}`);
+  const travel = async keys => page.evaluate(keys => {
+    WB.warp(0, 24);
+    WB.lookAt(0, 0);
+    WB.sim(0.55);
+    WB.sim(0.5, keys);
+    return 24 - WB.info().z;
+  }, keys);
+  const walkSpeed = await travel(['KeyW']);
+  const runSpeed = await travel(['KeyW', 'ShiftLeft']);
+  check(runSpeed > walkSpeed * 1.5, 'Shift covers more ground on the south road', `walk ${walkSpeed}, run ${runSpeed}`);
 
   // talking
-  const m = await page.evaluate(() => window.WB.villager('Mabel'));
-  await page.evaluate(([x, z]) => { window.WB.warp(x, z + 1.8); window.WB.lookAt(x, z); window.WB.sim(0.3); }, [m.x, m.z]);
+  await page.evaluate(() => {
+    WB.warp(0, 24);
+    WB.positionVillager('Mabel', 0, 22);
+    WB.lookAt(0.6, 22);
+    WB.sim(0.3);
+  });
   s = await info(page);
   check(s.near === 'Mabel', 'walking up to Mabel offers a chat', s.near);
+  await page.evaluate(() => {
+    WB.sim(0.2, ['Minus']);
+    WB.sim(0.6);
+  });
+  const beforeTalk = await info(page);
+  const closeEnough = (a, b) => a.every((value, i) => Math.abs(value - b[i]) < 0.01);
   await page.keyboard.press('Space');
-  await page.evaluate(() => window.WB.sim(0.4));
+  await page.evaluate(() => window.WB.sim(0.65));
   s = await info(page);
   check(s.speaking === 'Mabel', 'Space starts the chat');
+  check(beforeTalk.talkBlend === 0 && beforeTalk.yaw !== 0 && s.talkBlend === 1 &&
+    !closeEnough(s.cameraPosition, beforeTalk.cameraPosition) && !closeEnough(s.cameraQuaternion, beforeTalk.cameraQuaternion),
+    'the conversation frames the speakers from a different camera position and angle');
+  await page.locator('#villager-speech.show').waitFor();
+  check(await page.locator('#villager-speech').isVisible() && await page.locator('dialog[open]').count() === 0,
+    'the greeting is a world bubble and leaves the game visible');
   await shot(page, '04-talk');
-  await closeConversation(page);
+  await page.keyboard.press('Space');
+  await page.locator('#conversation-panel').waitFor();
+  await page.keyboard.press('Digit2');
+  check((await page.locator('#speech-reply').textContent()).includes('east road'), 'number keys choose a reply');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.WB.sim(0.65));
+  s = await info(page);
+  check(s.speaking === null && s.talkBlend === 0 && s.camDist === beforeTalk.camDist && s.yaw === beforeTalk.yaw &&
+    closeEnough(s.cameraPosition, beforeTalk.cameraPosition) && closeEnough(s.cameraQuaternion, beforeTalk.cameraQuaternion),
+    'ending conversation restores the previous exploration camera',
+    'delta ' + Math.hypot(...s.cameraPosition.map((value, i) => value - beforeTalk.cameraPosition[i])).toFixed(3));
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Space');
+  const replies = page.locator('#conversation-panel');
+  await replies.waitFor();
+  await holdUntil(page, 'KeyS', z => WB.info().speaking === null && WB.info().z > z + 0.3, s.z);
+  check(!(await replies.isVisible()), 'walking away with replies focused closes the conversation');
 
   // the bridge carries you over the creek; the creek stops you anywhere else
   await page.evaluate(() => { window.WB.warp(19.5, -21); window.WB.lookAt(19.5, -30); window.WB.sim(0.1); });
@@ -167,25 +204,85 @@ if (only !== 'route') {
   await touch('touchStart', 300, 400); await touch('touchMove', 250, 400); await touch('touchMove', 200, 400); await touch('touchEnd', 0, 0);
   const c = await info(page);
   check(Math.abs(c.yaw - yaw0) > 0.3, 'phone: dragging the right side turns the camera', `yaw ${yaw0} -> ${c.yaw}`);
-  const m = await page.evaluate(() => window.WB.villager('Pip'));
-  await page.evaluate(([x, z]) => { window.WB.warp(x, z + 1.8); window.WB.lookAt(x, z); window.WB.sim(0.3); }, [m.x, m.z]);
-  const shown = await page.evaluate(() => getComputedStyle(document.getElementById('talk')).display);
-  check(shown === 'block', 'phone: the Talk button shows up next to a villager');
-  await page.touchscreen.tap(390 - 22 - 39, 844 - 28 - 39);
-  await page.evaluate(() => window.WB.sim(0.3));
+  await page.evaluate(() => {
+    WB.warp(0, 24);
+    WB.positionVillager('Pip', 0, 22);
+    WB.lookAt(0, 22);
+    WB.sim(0.3);
+  });
+  check(await page.getByRole('button', { name: 'Talk', exact: true }).isVisible(), 'phone: Talk is available near a villager');
+  await page.getByRole('button', { name: 'Talk', exact: true }).tap();
+  await page.evaluate(() => window.WB.sim(0.65));
+  const speech = page.locator('#villager-speech.show');
+  await speech.waitFor();
   const d = await info(page);
-  check(d.speaking === 'Pip', 'phone: tapping Talk starts the chat', d.speaking);
+  check(d.speaking === 'Pip' && d.talkBlend === 1 && (await speech.locator('#speech-reply').textContent()).includes('orchard'),
+    'phone: tapping Talk shows Pip’s greeting and frames the conversation', d.speaking);
+  const ask = page.getByRole('button', { name: 'Ask a question', exact: true });
+  await ask.tap();
+  const panel = page.locator('#conversation-panel');
+  await panel.waitFor();
+  const options = await panel.boundingBox();
+  const bubble = await speech.boundingBox();
+  check(options.y > 422 && bubble.y + bubble.height < options.y && await page.locator('dialog[open]').count() === 0,
+    'phone: reply choices open at the bottom with room for the world bubble');
+  await shot(page, '13-phone-conversation');
   await page.getByRole('button', { name: 'Where should I go?' }).tap();
-  const speech = page.locator('#villager-speech');
-  await speech.waitFor({ state: 'visible' });
   const bounds = await speech.boundingBox();
-  check(!(await page.locator('#conversation').isVisible()) && bounds.x >= 0 && bounds.x + bounds.width <= 390,
-    'phone: the answer appears in a speech bubble within the screen');
-  await speech.locator('#speech-more').selectOption({ label: 'Active jobs' });
+  check(!(await panel.isVisible()) && bounds.x >= 0 && bounds.x + bounds.width <= 390 &&
+    (await speech.locator('#speech-reply').textContent()).includes('orchard'),
+    'phone: directions are answered overhead and the reply strip closes');
+  await ask.tap();
+  await panel.getByRole('button', { name: 'More topics' }).tap();
+  await panel.getByRole('button', { name: 'Active jobs' }).tap();
   check((await speech.locator('#speech-reply').textContent()).includes('jobs underway'),
-    'phone: a follow-up updates the bubble without reopening the picker');
+    'phone: follow-up questions are answered in the same world bubble');
   await shot(page, '13-phone-speech-bubble');
-  await shot(page, '13-phone-talk');
+  const portrait = page.viewportSize();
+  const landscape = { width: portrait.height, height: portrait.width };
+  await page.setViewportSize(landscape);
+  await ask.tap();
+  await page.evaluate(() => WB.sim(0.1));
+  const landscapePanel = await panel.boundingBox();
+  const landscapeBubble = await speech.boundingBox();
+  const contained = box => box && box.x >= 0 && box.y >= 0 &&
+    box.x + box.width <= landscape.width && box.y + box.height <= landscape.height;
+  check(contained(landscapePanel) && contained(landscapeBubble) && (
+    landscapePanel.x + landscapePanel.width < landscapeBubble.x || landscapeBubble.x + landscapeBubble.width < landscapePanel.x ||
+    landscapePanel.y + landscapePanel.height < landscapeBubble.y || landscapeBubble.y + landscapeBubble.height < landscapePanel.y
+  ), 'phone landscape: reply choices and speech bubble fit without overlap');
+  await shot(page, '13-landscape-conversation');
+  await page.setViewportSize(portrait);
+  await page.waitForFunction(([width, height]) => innerWidth === width && innerHeight === height, [portrait.width, portrait.height]);
+  await touch('touchStart', 60, portrait.height - 48);
+  await touch('touchMove', 60, portrait.height - 116);
+  try {
+    await page.waitForFunction(z => WB.info().speaking === null && WB.info().z < z - 0.3, d.z);
+  } finally {
+    await touch('touchEnd', 0, 0);
+  }
+  await page.evaluate(() => window.WB.sim(0.65));
+  check((await info(page)).talkBlend === 0 && !(await panel.isVisible()),
+    'phone: the joystick immediately resumes movement and ends the conversation');
+
+  await page.evaluate(() => {
+    WB.warp(0, 24);
+    WB.positionVillager('Pip', 0, 24);
+    WB.lookAt(0, 0);
+    WB.sim(0.2);
+  });
+  await touch('touchStart', 60, portrait.height - 48);
+  await touch('touchMove', 60, portrait.height - 58);
+  try {
+    await page.keyboard.press('Space');
+    await page.evaluate(() => WB.sim(0.65));
+    const settled = await info(page);
+    const pip = settled.villagers.find(villager => villager.name === 'Pip');
+    check(settled.speaking === 'Pip' && Math.hypot(settled.x - pip.x, settled.z - pip.z) > 1.5 && pip.x === 0 && pip.z === 24,
+      'phone: a held stick stays neutral during Talk and close characters make room for each other');
+  } finally {
+    await touch('touchEnd', 0, 0);
+  }
   check(errors.length === 0, 'no page errors (phone)', errors.join(' | '));
   await context.close();
 }
@@ -214,12 +311,20 @@ if (!only || only === 'route') {
       window.WB.lookAt(x, z);
       window.WB.sim(0.2);
     });
-    const conversation = page.locator('#conversation');
-    const choose = async label => {
+    const conversation = page.locator('#conversation-panel');
+    const speech = page.locator('#villager-speech');
+    const ask = page.getByRole('button', { name: 'Ask a question', exact: true });
+    const handoff = page.locator('#exchange');
+    const chooseMore = async label => {
+      await ask.click();
+      await conversation.getByRole('button', { name: 'More topics' }).click();
       await conversation.getByRole('button', { name: label }).click();
-      await page.locator('#villager-speech').waitFor({ state: 'visible' });
-      await page.locator('#speech-close').click();
-      await page.waitForFunction(() => document.activeElement?.id === 'c');
+    };
+    const choose = async label => {
+      await ask.click();
+      await conversation.getByRole('button', { name: label }).click();
+      await speech.waitFor();
+      await closeConversation(page);
     };
     const talkToPip = async () => {
       await page.evaluate(() => {
@@ -228,26 +333,27 @@ if (!only || only === 'route') {
         window.WB.sim(0.25);
       });
       await page.keyboard.press('Space');
-      await conversation.waitFor();
-      if (await conversation.locator('#conversation-name').textContent() !== 'Pip') throw Error('Expected to talk to Pip');
+      await speech.waitFor();
+      if (await speech.locator('#speech-name').textContent() !== 'Pip') throw Error('Expected to talk to Pip');
     };
     await talkToPip();
-    await conversation.getByRole('button', { name: 'Take supplies' }).click();
-    const handoff = page.locator('#exchange');
+    await chooseMore('Take supplies');
+    check(await page.locator('dialog[open]').count() === 0, 'item exchanges stay in the world with no modal');
     await handoff.locator('#exchange-item').selectOption('bread');
     await handoff.getByRole('button', { name: 'Take' }).click();
-    const reply = page.locator('#villager-speech');
-    await reply.waitFor();
     check((await info(page)).progress.inventory.bread === 1, 'taking supplies adds a villager’s item to the backpack');
-    await reply.locator('#speech-more').selectOption({ label: 'Give an item' });
+    await chooseMore('Give an item');
+    await handoff.getByRole('button', { name: 'Cancel' }).click();
+    check((await info(page)).progress.inventory.bread === 1 && await conversation.isVisible() && !(await handoff.isVisible()),
+      'canceling a transfer keeps the item and returns to the replies');
+    await conversation.getByRole('button', { name: 'More topics' }).click();
+    await conversation.getByRole('button', { name: 'Give an item' }).click();
     await handoff.getByRole('button', { name: 'Give' }).click();
-    await reply.waitFor();
     check((await info(page)).progress.inventory.bread === 0, 'giving an item removes the selected quantity');
-    await reply.locator('#speech-more').selectOption({ label: 'Take supplies' });
+    await chooseMore('Take supplies');
     await handoff.locator('#exchange-item').selectOption('bread');
     await handoff.getByRole('button', { name: 'Take' }).click();
-    await reply.waitFor();
-    await reply.locator('#speech-close').click();
+    await closeConversation(page);
     await page.keyboard.press('KeyB');
     const backpack = page.locator('#backpack');
     await backpack.waitFor();
@@ -274,19 +380,18 @@ if (!only || only === 'route') {
       window.WB.sim(0.25);
     });
     await page.keyboard.press('Space');
-    await conversation.waitFor({ state: 'visible' });
-    check((await conversation.locator('#conversation-reply').textContent()).includes('Bramble Creek'),
+    await speech.waitFor();
+    check((await speech.locator('#speech-reply').textContent()).includes('Bramble Creek'),
       'a different villager notices the active cottage job');
+    await ask.click();
     await conversation.getByRole('button', { name: 'Where should I go?' }).click();
-    const speech = page.locator('#villager-speech');
-    await speech.waitFor({ state: 'visible' });
     check(!(await conversation.isVisible()) && (await speech.locator('#speech-reply').textContent()).includes('east road'),
-      'choosing directions closes the picker and shows an in-world answer');
-    await page.locator('#speech-more').selectOption({ label: 'Active jobs' });
-    await speech.waitFor({ state: 'visible' });
+      'choosing directions closes the reply strip and shows an in-world answer');
+    await ask.click();
+    await conversation.getByRole('button', { name: 'Active jobs' }).click();
     check((await speech.locator('#speech-reply').textContent()).includes('Gather branches'),
       'active jobs topic repeats the next step without changing progress');
-    await page.locator('#speech-close').click();
+    await closeConversation(page);
     const voices = await page.evaluate(() => {
       window.WB.warp(4, 4);
       window.WB.positionVillager('Mabel', 5, 4);
@@ -302,6 +407,13 @@ if (!only || only === 'route') {
     check(voices >= 2, 'villagers exchange lines with at least two speakers');
 
     check((await objective.textContent()).includes('Bramble Creek'), 'Bruno lends the hatchet and gives directions');
+    await page.evaluate(() => {
+      WB.warp(46, -22);
+      WB.positionVillager('Mabel', 46, -21);
+      WB.sim(0.25);
+    });
+    check((await info(page)).near === 'Mabel' && await page.getByRole('button', { name: 'Chop', exact: true }).isVisible(),
+      'Chop takes priority when both wood and a villager are nearby');
     await visit(46, -22, 'creek wood');
     check((await info(page)).progress.inventory.wood === 3, 'hatchet yields wood');
     await visit(-12, -13.5, 'workbench');
@@ -312,16 +424,19 @@ if (!only || only === 'route') {
     await visit(7, 5.8, 'bakery');
     check((await info(page)).progress.built.bakery.stone === 3, 'partial delivery installs the bakery oven');
 
-    await page.reload();
-    await page.waitForFunction(() => window.READY, null, { timeout: 60000 });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
+    await page.waitForFunction(() => window.READY, null, { timeout: 90000 });
     await page.keyboard.press('Enter');
+    await page.waitForFunction(() => WB.info().started);
     check((await info(page)).progress.built.bakery.stone === 3, 'partial construction survives reload');
     check((await info(page)).progress.inventory.bread === 1, 'received items survive reload');
     await talkToPip();
-    await conversation.getByRole('button', { name: 'Take supplies' }).click();
+    await chooseMore('What’s new?');
+    check((await speech.locator('#speech-reply').textContent()).includes('My basket is at the north edge of the orchard'),
+      'Pip can share the bakery’s orchard clue while jobs are active');
+    await chooseMore('Take supplies');
     check(await handoff.locator('#exchange-item option[value="bread"]').count() === 0, 'villager stock stays depleted after reload');
-    await handoff.getByRole('button', { name: 'Close' }).click();
-    await page.waitForFunction(() => document.activeElement?.id === 'c');
+    await closeConversation(page);
     await visit(-5, -32, 'woods wood');
     await visit(-38, 1, 'orchard apples');
     await visit(-12, -13.5, 'workbench');
@@ -345,7 +460,13 @@ if (!only || only === 'route') {
       await visit(...stop, id + ' pickup');
       check((await info(page)).progress.errands[id] === 'carrying', id + ' job records its pickup');
       await visit(...host, id + ' delivery');
-      await choose(/^(Deliver|Report back)/);
+      const deliver = page.locator('#talk').and(page.getByRole('button', { name: /^(Deliver|Report back)/ }));
+      await deliver.waitFor();
+      await ask.waitFor();
+      check(await deliver.isVisible() && await ask.isVisible(), id + ' gives delivery priority and keeps Ask available');
+      if (id === 'market') await page.keyboard.press('Space');
+      else await deliver.click();
+      await closeConversation(page);
       check((await info(page)).progress.errands[id] === 'done', id + ' job completes through dialogue');
     }
 
@@ -380,9 +501,10 @@ if (!only || only === 'route') {
     await planner.getByRole('button', { name: 'Celebrate opening day' }).click();
     check((await info(page)).progress.opening, 'opening day adds the neighborhood group portrait');
 
-    await page.reload();
-    await page.waitForFunction(() => window.READY, null, { timeout: 60000 });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
+    await page.waitForFunction(() => window.READY, null, { timeout: 90000 });
     await page.keyboard.press('Enter');
+    await page.waitForFunction(() => WB.info().started);
     await page.locator('#open-album').click();
     await page.waitForFunction(() => {
       const photos = [...document.querySelectorAll('#album img')];

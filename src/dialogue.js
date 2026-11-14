@@ -1,3 +1,15 @@
+export const greetings = {
+  Mabel: 'Hello! Did you see the swallows by the well?',
+  Pip: 'Hey! I’m headed to the orchard later.',
+  Bruno: 'Hello there. Got a minute to talk carpentry?',
+  Dot: 'Oh, hello! I was just thinking about Lily Pond.',
+  Biscuit: 'Hey! Have you been up the north trail yet?',
+  Fennel: 'Hello! I found a pebble that looks like a boot.',
+  Hazel: 'Welcome to my little corner of the market!',
+  Reed: 'Glad you came by. It’s quiet down here today.',
+  Clover: 'Hey there. Can you smell the apples from here?',
+};
+
 // Personal stories and directions available even when a villager has no work to offer.
 export const topics = {
   Mabel: ['I watch the weather from the well. When the swallows skim the water, there’s usually rain by supper.', 'Follow the east road to Bramble Creek. The bridge is the safest crossing.'],

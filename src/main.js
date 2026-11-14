@@ -1,8 +1,8 @@
-import { topics, chatter } from './dialogue.js';
+import { greetings, topics, chatter } from './dialogue.js';
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
 import { makeKid, makeCat, makeBunny, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
-import { groundAt, walkable, zoneAt, height, WATER } from './layout.js';
+import { groundAt, hitSolid, walkable, zoneAt, height, WATER } from './layout.js';
 import { rand, clamp, lerp } from './util.js';
 import { projects, deposits, workbench, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject, villageJobs, itemNames, moveItems } from './rebuild.js';
 
@@ -77,6 +77,47 @@ const cam = { yaw: 0, pitch: 0.5, dist: 12.5, x: pl.x, y: 0, z: pl.z, mode: 'spl
 camera.position.copy(SPLASH_CAM.pos);
 camera.lookAt(SPLASH_CAM.look);
 const tmpPos = new THREE.Vector3(), tmpLook = new THREE.Vector3();
+const talkPos = new THREE.Vector3(), talkLook = new THREE.Vector3();
+const talkView = { villager: null, yaw: 0, blend: 0, stepTo: null };
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+function beginTalkView(villager) {
+  const stand = talkView.stepTo ?? pl;
+  const dx = villager.x - stand.x, dz = villager.z - stand.z;
+  const side = Math.hypot(dx, dz) > 0.15 ? Math.atan2(dz, -dx) : cam.yaw;
+  talkView.yaw = Math.cos(cam.yaw - side) >= 0 ? side : side + Math.PI;
+  const midX = (stand.x + villager.x) / 2, midZ = (stand.z + villager.z) / 2;
+  const room = yaw => [2.8, 4.4, 6.2].every(distance => {
+    const x = midX + Math.sin(yaw) * distance, z = midZ + Math.cos(yaw) * distance;
+    return !hitSolid(x, z, 0.2) && CAST.every(actor => actor === villager || Math.hypot(actor.x - x, actor.z - z) > 0.85);
+  });
+  if (!room(talkView.yaw) && room(talkView.yaw + Math.PI)) talkView.yaw += Math.PI;
+  talkView.villager = villager;
+}
+
+function blendTalkView(position, target, dt) {
+  const step = reducedMotion.matches ? 1 : dt / 0.52;
+  talkView.blend = clamp(talkView.blend + (speaking ? step : -step), 0, 1);
+  if (talkView.blend === 0) {
+    talkView.villager = null;
+    return;
+  }
+  const v = talkView.villager;
+  const x = (pl.x + v.x) / 2, z = (pl.z + v.z) / 2;
+  const y = (pl.y + groundAt(v.x, v.z)) / 2;
+  const portrait = camera.aspect < 1;
+  const preferred = portrait ? 7.2 : 7;
+  const halfViewWidth = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.aspect;
+  const span = Math.hypot(pl.x - v.x, pl.z - v.z) + 1.8;
+  const distance = Math.max(preferred, span / (1.6 * halfViewWidth));
+  talkLook.set(x, y + (portrait ? 0.85 : 1.33), z);
+  talkPos.set(x + Math.sin(talkView.yaw) * distance, y + 2.95, z + Math.cos(talkView.yaw) * distance);
+  talkPos.y = Math.max(talkPos.y, height(talkPos.x, talkPos.z) + 1.5);
+  const blend = talkView.blend;
+  const ease = blend * blend * (3 - 2 * blend);
+  position.lerp(talkPos, ease);
+  target.lerp(talkLook, ease);
+}
 function followPose(out, look) {
   const h = Math.cos(cam.pitch) * cam.dist;
   // pulled back, aim a little ahead and up so the view opens onto what's in front
@@ -106,9 +147,25 @@ let started = false;
 const startKeys = e => { if (!started) { start(); e.preventDefault(); } };
 addEventListener('keydown', e => {
   if (!started) { if (!splash.classList.contains('loading')) startKeys(e); return; }
-  if (document.querySelector('dialog[open]') || e.target.matches?.('button, select')) return;
+  if (document.querySelector('dialog[open]')) return;
+  if (speaking && e.code === 'Escape') {
+    if (!e.repeat) endConversation();
+    e.preventDefault();
+    return;
+  }
+  if (e.target.matches?.('input, select, textarea')) return;
+  if (e.target.id === 'speech-reply' && e.key.startsWith('Arrow')) return;
+  if (speaking && !panel.hidden && !e.repeat && /^[1-9]$/.test(e.key)) {
+    const choice = topicList.children[Number(e.key) - 1];
+    if (exchange.hidden && choice) { choice.click(); e.preventDefault(); }
+    return;
+  }
+  if (e.target.matches?.('button') && (e.code === 'Space' || e.code === 'Enter')) {
+    if (e.repeat) e.preventDefault();
+    return;
+  }
   if (e.code === 'KeyB' && !e.repeat) { openBackpack(); e.preventDefault(); return; }
-  keys.add(e.code);
+  if (!e.repeat || !speaking) keys.add(e.code);
   if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) interact(); e.preventDefault(); }
 });
 addEventListener('keyup', e => keys.delete(e.code));
@@ -118,26 +175,36 @@ splash.addEventListener('pointerdown', e => { if (!splash.classList.contains('lo
 
 // touch: left side is a floating joystick, anywhere else drags the camera round
 const stick = $('stick'), knob = $('knob');
-const joy = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+const joy = { id: null, ox: 0, oy: 0, lastX: 0, lastY: 0, x: 0, y: 0 };
 const drag = { id: null, x: 0 };
 const canvasEl = $('c');
+function centerStick(x, y) {
+  joy.ox = joy.lastX = x;
+  joy.oy = joy.lastY = y;
+  joy.x = joy.y = 0;
+  stick.style.left = x + 'px';
+  stick.style.top = y + 'px';
+  knob.style.transform = 'translate(0,0)';
+}
 canvasEl.addEventListener('pointerdown', e => {
   if (!started) return;
   if (touch && e.clientX < innerWidth * 0.45 && joy.id === null) {
-    joy.id = e.pointerId; joy.ox = e.clientX; joy.oy = e.clientY; joy.x = joy.y = 0;
-    stick.style.display = 'block'; stick.style.left = e.clientX + 'px'; stick.style.top = e.clientY + 'px';
-    knob.style.transform = 'translate(0,0)';
-  } else if (drag.id === null) { drag.id = e.pointerId; drag.x = e.clientX; }
-  canvasEl.setPointerCapture(e.pointerId);
+    joy.id = e.pointerId;
+    centerStick(e.clientX, e.clientY);
+    stick.style.display = 'block';
+  } else if (!speaking && drag.id === null) { drag.id = e.pointerId; drag.x = e.clientX; }
+  if (joy.id === e.pointerId || drag.id === e.pointerId) canvasEl.setPointerCapture(e.pointerId);
 });
 canvasEl.addEventListener('pointermove', e => {
   if (e.pointerId === joy.id) {
-    let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy;
+    joy.lastX = e.clientX;
+    joy.lastY = e.clientY;
+    let dx = joy.lastX - joy.ox, dy = joy.lastY - joy.oy;
     const len = Math.hypot(dx, dy), R = 52;
     if (len > R) { dx *= R / len; dy *= R / len; }
     joy.x = dx / R; joy.y = dy / R;
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
-  } else if (e.pointerId === drag.id) {
+  } else if (!speaking && e.pointerId === drag.id) {
     cam.yaw -= (e.clientX - drag.x) * 0.006;
     drag.x = e.clientX;
   }
@@ -150,7 +217,7 @@ canvasEl.addEventListener('pointerup', endPointer);
 canvasEl.addEventListener('pointercancel', endPointer);
 // zooming out also lowers the camera, so pulling back shows the horizon and the landmarks
 const zoom = d => { cam.dist = clamp(d, 7, 24); cam.pitch = lerp(0.64, 0.26, (cam.dist - 7) / 17); };
-canvasEl.addEventListener('wheel', e => zoom(cam.dist + e.deltaY * 0.01), { passive: true });
+canvasEl.addEventListener('wheel', e => { if (!speaking) zoom(cam.dist + e.deltaY * 0.01); }, { passive: true });
 $('talk').addEventListener('click', interact);
 
 function readInput() {
@@ -196,9 +263,12 @@ const turnTo = (cur, want, k) => { let d = want - cur; d = Math.atan2(Math.sin(d
 
 function updatePlayer(dt) {
   readInput();
-  cam.yaw += input.turn * dt * 1.8;
-  if (input.zoom) zoom(cam.dist + input.zoom * dt * 10);
   const want = Math.hypot(input.mx, input.mz);
+  if (speaking && (want > 0.05 || Math.hypot(speaking.x - pl.x, speaking.z - pl.z) > 5)) endConversation();
+  if (!speaking) {
+    cam.yaw += input.turn * dt * 1.8;
+    if (input.zoom) zoom(cam.dist + input.zoom * dt * 10);
+  }
   const speed = want > 0.01 ? (input.run ? RUN : WALK) * Math.min(1, want) : 0;
   // input is relative to where the camera looks
   const s = Math.sin(cam.yaw), c = Math.cos(cam.yaw);
@@ -209,20 +279,25 @@ function updatePlayer(dt) {
   const moved = move(pl, pl.vx * dt, pl.vz * dt);
   if (!moved) { pl.vx *= 0.5; pl.vz *= 0.5; }
   if (want > 0.05) pl.ry = turnTo(pl.ry, Math.atan2(wx, wz), Math.min(1, dt * 14));
+  else if (speaking) pl.ry = turnTo(pl.ry, conversationFacing(pl, speaking), Math.min(1, dt * 8));
+  const stepping = stepBackForTalk(dt);
   const gy = groundAt(pl.x, pl.z);
   pl.y = pl.y ? lerp(pl.y, gy, Math.min(1, dt * 18)) : gy;
   player.root.position.set(pl.x, pl.y, pl.z);
   player.root.rotation.y = pl.ry;
-  pl.speed = Math.hypot(pl.vx, pl.vz);
+  pl.speed = stepping || Math.hypot(pl.vx, pl.vz);
 }
 
 // ---------- villagers ----------
 function updateVillager(v, dt) {
   const dpx = pl.x - v.x, dpz = pl.z - v.z, dp = Math.hypot(dpx, dpz);
-  if (chat && (chat.a === v || chat.b === v)) {
-    const partner = chat.a === v ? chat.b : chat.a;
-    v.ry = turnTo(v.ry, Math.atan2(partner.x - v.x, partner.z - v.z), Math.min(1, dt * 6));
-    v.c.root.position.y = groundAt(v.x, v.z);
+  let listener = v === speaking ? pl : null;
+  if (!listener && chat?.a === v) listener = chat.b;
+  if (!listener && chat?.b === v) listener = chat.a;
+  if (listener) {
+    const facing = v === speaking ? conversationFacing(v, listener) : Math.atan2(listener.x - v.x, listener.z - v.z);
+    v.ry = turnTo(v.ry, facing, Math.min(1, dt * 6));
+    v.c.root.position.set(v.x, groundAt(v.x, v.z), v.z);
     v.c.root.rotation.y = v.ry;
     return 0;
   }
@@ -233,12 +308,12 @@ function updateVillager(v, dt) {
     return speed;
   }
   speed = 0;
-  if (v.job || v.state === 'pose') { /* holding the opening shot */ }
+  if (v.state === 'pose') { /* holding the opening shot */ }
   else if (dp < 2.8 && started) {
     v.ry = turnTo(v.ry, Math.atan2(dpx, dpz), Math.min(1, dt * 6));
     if (v.state === 'walk') { v.state = 'idle'; v.timer = rand(1, 2); }
-  } else if (v === byName.Bruno && progress.started && !complete(progress, 'cottage')) {
-    // Bruno waits where he gave the player the errand.
+  } else if (v.job || (v === byName.Bruno && progress.started && !complete(progress, 'cottage'))) {
+    // Job hosts stay close to their work.
   } else if (v.state === 'idle') {
     v.timer -= dt;
     if (v.timer <= 0) {
@@ -329,6 +404,7 @@ function appendAlbumPhoto(pages, source, label) {
 }
 
 $('open-album').addEventListener('click', () => {
+  if (speaking) endConversation();
   keys.clear();
   renderAlbum();
   album.showModal();
@@ -339,7 +415,6 @@ function restoreGameFocus() {
 }
 const backpack = $('backpack');
 const exchange = $('exchange');
-const exchangeForm = $('exchange-form');
 const exchangeItem = $('exchange-item');
 const exchangeCount = $('exchange-count');
 const exchangeStatus = $('exchange-status');
@@ -361,6 +436,7 @@ function itemRow(label, count) {
 
 function openBackpack() {
   if (!started || document.querySelector('dialog[open]')) return;
+  if (speaking) endConversation();
   keys.clear();
   const items = stockedItems(progress.inventory);
   $('backpack-items').replaceChildren(...items.map(item => itemRow(itemNames[item][0], progress.inventory[item])));
@@ -375,7 +451,7 @@ function openBackpack() {
 
 $('open-backpack').addEventListener('click', openBackpack);
 backpack.addEventListener('close', restoreGameFocus);
-exchange.addEventListener('close', restoreGameFocus);
+$('exchange-cancel').addEventListener('click', () => setConversationPanel('topics'));
 
 function updateExchangeCount() {
   const available = handoff.from[exchangeItem.value];
@@ -396,18 +472,16 @@ function openExchange(villager, giving) {
     return;
   }
   handoff = { villager, giving, from, to };
-  hideAnswer();
-  if (conversation.open) conversation.close();
-  keys.clear();
   $('exchange-title').textContent = giving ? 'Give to ' + villager.name : 'Take from ' + villager.name;
   $('exchange-submit').textContent = giving ? 'Give' : 'Take';
   exchangeItem.replaceChildren(...items.map(item => new Option(itemNames[item][0] + ' · ' + from[item], item)));
   updateExchangeCount();
-  exchange.showModal();
+  setConversationPanel('exchange');
 }
 
-exchangeForm.addEventListener('submit', event => {
+exchange.addEventListener('submit', event => {
   event.preventDefault();
+  if (!speaking || !handoff) return;
   const { villager, giving, from, to } = handoff;
   const item = exchangeItem.value;
   const count = exchangeCount.valueAsNumber;
@@ -419,7 +493,6 @@ exchangeForm.addEventListener('submit', event => {
   const singular = { planks: 'plank', apples: 'apple' }[item] ?? label.toLowerCase();
   const amount = count + ' ' + (count === 1 ? singular : plural);
   commitProgress(giving ? 'Gave ' + villager.name + ' ' + amount + '.' : 'Received ' + amount + ' from ' + villager.name + '.');
-  exchange.close();
   showAnswer(villager, giving ? 'Thanks! I’ll keep the supplies here if you need them back.' : 'Here you go. I put ' + amount + ' in your backpack.');
 });
 
@@ -712,59 +785,80 @@ function villagerLine(villager) {
   return villager.lines[villager.line++ % villager.lines.length];
 }
 
-const conversation = $('conversation');
 const speech = $('villager-speech');
-let answer = null;
-let followupChoices = [];
-
-function hideAnswer() {
-  answer = null;
-  speech.hidden = true;
-}
-
-function showAnswer(villager, words) {
-  answer = { villager, remaining: Math.max(8, 3 + words.length / 15) };
-  $('speech-name').textContent = villager.name;
-  $('speech-reply').textContent = words;
-  if (conversation.open) conversation.close();
-  const followup = $('speech-more');
-  followupChoices = conversationChoices(villager);
-  followup.replaceChildren(new Option('Ask another question…', ''), ...followupChoices.map(({ label }, index) => new Option(label, String(index))));
-  speech.hidden = false;
-}
-
-$('speech-more').addEventListener('change', event => {
-  const choice = followupChoices[event.currentTarget.value];
-  if (answer && choice) choice.run();
-});
-$('speech-close').addEventListener('click', () => {
-  hideAnswer();
-  restoreGameFocus();
-});
-
-function updateAnswer(dt) {
-  if (!answer) return;
-  const { villager } = answer;
-  if (!speech.contains(document.activeElement)) answer.remaining -= dt;
-  if (answer.remaining <= 0 || Math.hypot(villager.x - pl.x, villager.z - pl.z) > 6) {
-    const focused = speech.contains(document.activeElement);
-    hideAnswer();
-    if (focused) restoreGameFocus();
-    return;
-  }
-  const p = screenAt(villager.x, villager.c.root.position.y + 2.65, villager.z);
-  const width = speech.offsetWidth;
-  const height = speech.offsetHeight;
-  const x = p.on ? clamp(p.x, 12 + width / 2, innerWidth - 12 - width / 2) : innerWidth / 2;
-  const y = clamp(p.on ? p.y - 14 : innerHeight * 0.65, 54 + height, innerHeight - 20);
-  speech.style.left = x + 'px';
-  speech.style.top = (y - height) + 'px';
-  speech.style.setProperty('--tail', clamp(p.x - x + width / 2, 18, width - 18) + 'px');
-  speech.classList.toggle('offscreen', !p.on || p.x < 0 || p.x > innerWidth || p.y < 0 || p.y > innerHeight);
-}
+const panel = $('conversation-panel');
+const topicList = $('conversation-topics');
+const askBtn = $('talk-ask');
+const goodbyeBtn = $('talk-goodbye');
+const talkLabel = $('talk-label');
+const speechName = $('speech-name');
+const speechReply = $('speech-reply');
+const speechAnnouncement = $('speech-announcement');
+let speechGesture = 0;
 let chat = null, chatDelay = 2, lastPair = '';
 const overheard = [];
 const heardTopics = new Map();
+
+function showAnswer(villager, words) {
+  speechName.textContent = villager.name;
+  speechReply.textContent = words;
+  speechReply.scrollTop = 0;
+  speechAnnouncement.textContent = villager.name + '. ' + words;
+  speech.classList.add('show');
+  speech.removeAttribute('aria-hidden');
+  speechGesture = 0.55;
+  setConversationPanel(null);
+  placeSpeech(speech, villager, 1.35);
+}
+
+function endConversation() {
+  speaking = null;
+  talkView.stepTo = null;
+  speechAnnouncement.textContent = '';
+  speech.classList.remove('show');
+  speech.setAttribute('aria-hidden', 'true');
+  setConversationPanel(null);
+}
+
+function setConversationPanel(section) {
+  panel.hidden = !section;
+  exchange.hidden = section !== 'exchange';
+  topicList.hidden = section !== 'topics';
+  if (section !== 'exchange') handoff = null;
+  panel.scrollTop = 0;
+  updateTalk();
+  if (section === 'topics') renderTopics();
+  else if (section === 'exchange') exchangeItem.focus({ preventScroll: true });
+  else {
+    const focus = speaking ? talkBtn : canvasEl;
+    focus.focus({ preventScroll: true });
+  }
+}
+
+function toggleTopics() {
+  setConversationPanel(!panel.hidden && exchange.hidden ? null : 'topics');
+}
+
+askBtn.addEventListener('click', toggleTopics);
+goodbyeBtn.addEventListener('click', endConversation);
+
+const speechAnchor = new THREE.Vector3();
+function placeSpeech(element, villager, offset) {
+  // The anchor follows the head in local space. The DOM bubble always faces the screen.
+  villager.c.head.localToWorld(speechAnchor.set(0, offset, -0.3));
+  const p = screenAt(speechAnchor.x, speechAnchor.y, speechAnchor.z);
+  const onscreen = p.on && p.x >= 0 && p.x <= innerWidth && p.y >= 0 && p.y <= innerHeight;
+  const width = element.offsetWidth, height = element.offsetHeight;
+  const ceiling = !panel.hidden && innerHeight > 450 ? panel.offsetTop - 12 : innerHeight - 77;
+  const x = clamp(onscreen ? p.x : innerWidth / 2, width / 2 + 12, innerWidth - width / 2 - 12);
+  let y = clamp(onscreen ? p.y - 9 : innerHeight * 0.42, 56 + height, Math.max(56 + height, ceiling));
+  const overlapsPanel = !panel.hidden && y > panel.offsetTop - 12 && x - width / 2 < panel.offsetLeft + panel.offsetWidth + 8 &&
+    x + width / 2 > panel.offsetLeft - 8;
+  if (overlapsPanel) y = Math.max(height + 12, panel.offsetTop - 12);
+  element.style.transform = 'translate(' + Math.round(x - width / 2) + 'px, ' + Math.round(y - height) + 'px)';
+  element.style.setProperty('--tail', clamp(p.x - x + width / 2, 14, width - 14) + 'px');
+  element.classList.toggle('offscreen', !onscreen || Math.abs(y - p.y) > 55);
+}
 
 function activeJobs() {
   const errands = villageJobs.flatMap(job => {
@@ -790,72 +884,159 @@ function jobReply(jobs) {
     : 'You have no jobs underway. Ask Hazel at Farmgate Market, Reed by the pond, or Clover by the orchard.';
 }
 
-function openConversation(villager) {
-  hideAnswer();
-  speaking = villager;
-  keys.clear();
-  chat = null;
-  $('chatter').hidden = true;
-  chatDelay = 2;
-  $('conversation-name').textContent = villager.name;
-  const words = $('conversation-reply');
-  const jobs = activeJobs();
-  words.textContent = jobs.length ? 'You’re in the middle of ' + jobs.length + (jobs.length === 1 ? ' job' : ' jobs') + '. ' + jobReply(jobs)
-    : 'Good to see you. What would you like to talk about?';
-  const choices = $('conversation-topics');
-  choices.replaceChildren();
-  for (const { label, run } of conversationChoices(villager)) {
-    plannerButton(choices, label, run);
+function deliveryFor(villager) {
+  const job = villager.job;
+  if (job && progress.errands[job.id] === 'carrying') return job.delivery.split(' to ')[0];
+  if (villager === byName.Bruno && progress.started && !done('cottage') && progress.inventory.planks > 0) return 'Deliver planks';
+  return null;
+}
+
+function greet(villager) {
+  const delivery = deliveryFor(villager);
+  if (delivery) return villager === byName.Bruno ? 'Those planks look just right for the cottage.' :
+    villager.name === 'Reed' ? 'You made it back from the dock! How’s the trail?' :
+      villager.name === 'Hazel' ? 'You found the flowers! I saved a spot for them.' : 'Are those the cider apples? I’ll get the press ready.';
+  if (villager.job && progress.errands[villager.job.id] === 'active') return villager.job.line;
+  if (activeJobs().length) {
+    if (!done('cottage') && villager !== byName.Bruno && progress.started) {
+      if (progress.inventory.planks >= 3) return 'Those planks are for Bruno, right? He’s waiting for you.';
+      if (progress.inventory.wood) return 'That wood looks sturdy. Have you found Bruno’s workbench?';
+      return 'Out gathering for Bruno? Follow the east road across Bramble Creek.';
+    }
+    const errand = villageJobs.find(job => ['active', 'carrying'].includes(progress.errands[job.id]));
+    if (errand) return 'How’s your errand for ' + errand.villager + ' coming along?';
+    return 'Hey! How’s your work around town coming along?';
   }
-  conversation.showModal();
+  return greetings[villager.name];
+}
+
+function conversationFacing(actor, listener) {
+  const stand = talkView.stepTo;
+  const from = actor === pl && stand ? stand : actor;
+  const to = listener === pl && stand ? stand : listener;
+  const dx = to.x - from.x, dz = to.z - from.z;
+  const facing = Math.hypot(dx, dz) > 0.15 ? Math.atan2(dx, dz) :
+    talkView.yaw + (actor === pl ? Math.PI / 2 : -Math.PI / 2);
+  const angle = Math.atan2(Math.sin(talkView.yaw - facing), Math.cos(talkView.yaw - facing));
+  // A small turn toward the camera keeps the eyes visible while the two face each other.
+  return facing + clamp(angle, -0.3, 0.3);
+}
+
+function findTalkingSpot(villager) {
+  const dx = pl.x - villager.x, dz = pl.z - villager.z;
+  const gap = Math.hypot(dx, dz);
+  if (gap >= 1.35) return null;
+  const outward = gap > 0.15 ? Math.atan2(dx, dz) : cam.yaw + Math.PI / 2;
+  for (const offset of [0, 30, -30, 60, -60, 90, -90, 120, -120, 180]) {
+    const angle = outward + THREE.MathUtils.degToRad(offset);
+    const x = villager.x + Math.sin(angle) * 1.7, z = villager.z + Math.cos(angle) * 1.7;
+    if (gap > 0.15 && dx * (x - pl.x) + dz * (z - pl.z) < 0) continue;
+    if (CAST.some(actor => actor !== villager && Math.hypot(actor.x - x, actor.z - z) < 0.85)) continue;
+    const steps = Math.ceil(Math.hypot(x - pl.x, z - pl.z) / 0.18);
+    let clear = true;
+    for (let i = 1; i <= steps && clear; i++) {
+      clear = walkable(lerp(pl.x, x, i / steps), lerp(pl.z, z, i / steps), R);
+    }
+    if (clear) return { x, z };
+  }
+  return null;
+}
+
+function stepBackForTalk(dt) {
+  const stand = talkView.stepTo;
+  if (!stand || dt === 0) return 0;
+  const distance = Math.hypot(stand.x - pl.x, stand.z - pl.z);
+  if (distance < 0.01) {
+    talkView.stepTo = null;
+    return 0;
+  }
+  const step = Math.min(distance, dt * WALK);
+  const x = lerp(pl.x, stand.x, step / distance), z = lerp(pl.z, stand.z, step / distance);
+  if (!walkable(x, z, R)) {
+    talkView.stepTo = null;
+    return 0;
+  }
+  pl.x = x;
+  pl.z = z;
+  if (step === distance) talkView.stepTo = null;
+  return step / dt;
+}
+
+function openConversation(villager) {
+  speaking = villager;
+  pl.vx = pl.vz = 0;
+  keys.clear();
+  if (joy.id !== null) centerStick(joy.lastX, joy.lastY);
+  talkView.stepTo = reducedMotion.matches ? null : findTalkingSpot(villager);
+  if (chat?.a === villager || chat?.b === villager) {
+    chat = null;
+    $('chatter').hidden = true;
+    chatDelay = 2;
+  }
+  beginTalkView(villager);
+  showAnswer(villager, greet(villager));
 }
 
 function conversationChoices(villager) {
-  const choices = [];
-  const option = (label, reply) => choices.push({ label, run: () => showAnswer(villager, reply()) });
-  choices.push(
+  const option = (label, reply) => ({ label, run: () => showAnswer(villager, reply()) });
+  const job = villager.job;
+  const state = job && progress.errands[job.id];
+  const delivery = deliveryFor(villager);
+  const main = [];
+  if (delivery) main.push(option(delivery, () => villagerLine(villager)));
+  else if (job || villager === byName.Bruno) {
+    const label = job ? state ? 'Talk about ' + job.title.toLowerCase() : 'Start job · ' + job.title : 'Talk about rebuilding';
+    main.push(option(label, () => villagerLine(villager)));
+  } else {
+    main.push(option(activeJobs().length ? 'Active jobs' : 'What’s new?', () => activeJobs().length ? jobReply(activeJobs()) : villagerLine(villager)));
+  }
+  main.push(option('Where should I go?', () => topics[villager.name][1]));
+  const more = [
+    option('How’s life in Willowbend?', () => topics[villager.name][0]),
+    option('Active jobs', () => jobReply(activeJobs())),
+    option('Village news', () => progress.opening ? 'The meadow neighborhood is open. Everyone’s talking about the opening-day photograph.'
+      : done('bakery') ? 'The bakery is open. The next big thing is the neighborhood across Bramble Creek.'
+      : 'Bruno is looking for help rebuilding. Hazel, Reed, and Clover also have work available.'),
     { label: 'Give an item', run: () => openExchange(villager, true) },
     { label: 'Take supplies', run: () => openExchange(villager, false) },
-  );
-  option('How’s life in Willowbend?', () => topics[villager.name][0]);
-  option('Where should I go?', () => topics[villager.name][1]);
-  option('Active jobs', () => jobReply(activeJobs()));
-  if (villager.job || villager === byName.Bruno) {
-    const job = villager.job;
-    const state = job && progress.errands[job.id];
-    const label = state === 'carrying' ? job.delivery : job && !state ? 'Start job · ' + job.title
-      : job ? 'Talk about ' + job.title.toLowerCase() : 'Talk about rebuilding';
-    option(label, () => villagerLine(villager));
-  } else option('What’s new?', () => villagerLine(villager));
-  option('Village news', () => progress.opening ? 'The meadow neighborhood is open. Everyone’s talking about the opening-day photograph.'
-    : done('bakery') ? 'The bakery is open. The next big thing is the neighborhood across Bramble Creek.'
-    : 'Bruno is looking for help rebuilding. Hazel, Reed, and Clover also have work available.');
-  if (overheard.length) option('What have people been saying?', () => 'I heard this nearby. “' + overheard.at(-1).split(' · ').slice(1).join(' · ') + '”');
-  return choices;
+  ];
+  if (!job && villager !== byName.Bruno) more.splice(1, 0, option('What’s new?', () => villagerLine(villager)));
+  if (overheard.length) more.push(option('What have people been saying?', () => 'I heard this nearby. “' + overheard.at(-1).split(' · ').slice(1).join(' · ') + '”'));
+  return { main, more: more.filter(choice => !main.some(entry => entry.label === choice.label)) };
 }
 
-conversation.addEventListener('close', () => {
-  speaking = null;
-  restoreGameFocus();
-});
+function renderTopics(expanded = false) {
+  const { main, more } = conversationChoices(speaking);
+  topicList.replaceChildren();
+  for (const { label, run } of expanded ? more : main) plannerButton(topicList, label, run);
+  plannerButton(topicList, expanded ? 'Back to replies' : 'More topics', () => renderTopics(!expanded));
+  panel.scrollTop = 0;
+  topicList.firstElementChild.focus({ preventScroll: true });
+}
 
 function interact() {
   if (!started || document.querySelector('dialog[open]')) return;
+  if (speaking) {
+    const delivery = deliveryFor(speaking);
+    if (delivery && panel.hidden) showAnswer(speaking, villagerLine(speaking));
+    else toggleTopics();
+    return;
+  }
   const action = nearbyAction();
   if (action) return action.run();
   if (near) openConversation(near);
 }
 
 function updateChatter(dt) {
-  const panel = $('chatter');
+  const captionEl = $('chatter');
   if (!started || document.querySelector('dialog[open]')) {
-    panel.hidden = true;
+    captionEl.hidden = true;
     return;
   }
   if (!chat) {
     chatDelay -= dt;
     if (chatDelay > 0) return;
-    const nearby = CAST.filter(v => progress.jobs[v.name] !== 'working' && Math.hypot(v.x - pl.x, v.z - pl.z) < 16);
+    const nearby = CAST.filter(v => v !== speaking && progress.jobs[v.name] !== 'working' && Math.hypot(v.x - pl.x, v.z - pl.z) < 16);
     for (const a of nearby) {
       const b = nearby.find(candidate => candidate !== a && Math.hypot(candidate.x - a.x, candidate.z - a.z) < 8 &&
         [a.name, candidate.name].sort().join('/') !== lastPair);
@@ -883,7 +1064,7 @@ function updateChatter(dt) {
   }
   if (Math.hypot(chat.a.x - pl.x, chat.a.z - pl.z) > 20 || progress.jobs[chat.a.name] === 'working' || progress.jobs[chat.b.name] === 'working') {
     chat = null;
-    panel.hidden = true;
+    captionEl.hidden = true;
     chatDelay = 2;
     return;
   }
@@ -891,20 +1072,23 @@ function updateChatter(dt) {
   if (chat.left <= 0) {
     if (chat.turn === chat.lines.length) {
       chat = null;
-      panel.hidden = true;
+      captionEl.hidden = true;
       chatDelay = 3;
       return;
     }
     const speaker = chat.turn % 2 ? chat.b : chat.a;
     const line = chat.lines[chat.turn++];
     const caption = speaker.name + ' · ' + line;
-    panel.textContent = caption;
-    panel.hidden = false;
+    captionEl.textContent = caption;
+    chat.speaker = speaker;
     overheard.push(caption);
     if (overheard.length > 9) overheard.shift();
-    speaker.c.root.userData.hop = 0.35;
     chat.left = Math.max(2.6, line.length / 19);
   }
+  const speaker = chat.speaker;
+  const pos = screenAt(speaker.x, speaker.c.root.position.y + 2.7, speaker.z);
+  captionEl.hidden = !!speaking || !pos.on || pos.x < 0 || pos.x > innerWidth || pos.y < 0 || pos.y > innerHeight;
+  if (!captionEl.hidden) placeSpeech(captionEl, speaker, 1.38);
 }
 
 refreshProjects();
@@ -914,25 +1098,31 @@ function screenAt(x, y, z) {
   proj.set(x, y, z).project(camera);
   return { x: (proj.x * 0.5 + 0.5) * innerWidth, y: (-proj.y * 0.5 + 0.5) * innerHeight, on: proj.z >= -1 && proj.z <= 1 };
 }
-function updateTalk(dt) {
+function updateTalk() {
   near = null;
   let best = 2.6;
   if (started) for (const v of CAST) { const d = Math.hypot(v.x - pl.x, v.z - pl.z); if (d < best) { best = d; near = v; } }
-  const action = nearbyAction();
-  talkBtn.classList.toggle('near', !!near || !!action);
-  talkBtn.textContent = action ? action.label.split(' ')[0] : 'Talk';
-  if (action || (near && !conversation.open)) {
+  const action = speaking ? null : nearbyAction();
+  const delivery = speaking && deliveryFor(speaking);
+  talkBtn.hidden = !speaking && !near && !action;
+  let label = action?.label.split(' ')[0] ?? 'Talk';
+  if (speaking) label = panel.hidden ? (delivery || 'Ask') : 'Back';
+  if (talkLabel.textContent !== label) talkLabel.textContent = label;
+  const accessibleLabel = label === 'Ask' ? 'Ask a question' : label;
+  if (talkBtn.getAttribute('aria-label') !== accessibleLabel) talkBtn.setAttribute('aria-label', accessibleLabel);
+  talkBtn.setAttribute('aria-expanded', String(!!speaking && !panel.hidden));
+  askBtn.hidden = !delivery || !panel.hidden;
+  goodbyeBtn.hidden = !speaking;
+  $('hud').classList.toggle('talking', !!speaking);
+  $('zone').classList.toggle('quiet', !!speaking);
+  if (action || (near && !speaking)) {
     const target = action ? action.position : near.c.root.position;
     const p = screenAt(target.x, target.y + (action ? 1.5 : 2.5), target.z);
-    const label = action ? action.label : 'Talk to ' + near.name;
+    const label = action?.label ?? 'Talk to ' + near.name;
     promptEl.textContent = touch ? label : 'Space · ' + label;
     promptEl.style.display = p.on ? 'block' : 'none';
     promptEl.style.left = p.x + 'px'; promptEl.style.top = p.y + 'px';
   } else promptEl.style.display = 'none';
-  for (const v of CAST) {
-    const u = v.c.root.userData;
-    if (u.hop > 0) { u.hop = Math.max(0, u.hop - dt); v.c.root.position.y += Math.sin((1 - u.hop / 0.35) * Math.PI) * 0.35; }
-  }
 }
 
 // ---------- where am I ----------
@@ -969,13 +1159,17 @@ function update(dt) {
   for (const v of CAST) {
     const sp = updateVillager(v, dt);
     animate(v.c, dt, time, sp);
+    if (v === speaking && speechGesture > 0 && !reducedMotion.matches) {
+      const gesture = Math.sin(Math.PI * speechGesture / 0.55);
+      v.c.head.rotation.x += gesture * 0.13;
+      v.c.arms[1].rotation.x -= gesture * 0.34;
+    }
   }
+  speechGesture = Math.max(0, speechGesture - dt);
   if (!started) {
     byName.Mabel.c.arms[-1].rotation.z = -(2.5 + Math.sin(time * 6 + 1.3) * 0.22);
     byName.Bruno.c.arms[1].rotation.z = 2.35 + Math.sin(time * 9) * 0.25;
   }
-  updateTalk(dt);
-  updateChatter(dt);
   updateZone(dt);
 
   if (cam.mode !== 'splash') {
@@ -990,11 +1184,14 @@ function update(dt) {
       tmpLook.lerpVectors(SPLASH_CAM.look, tmpLook, k);
       if (cam.blend >= 1) cam.mode = 'follow';
     }
+    blendTalkView(tmpPos, tmpLook, dt);
     camera.position.copy(tmpPos);
     camera.lookAt(tmpLook);
     camera.updateMatrixWorld();
   }
-  updateAnswer(dt);
+  if (speaking) placeSpeech(speech, speaking, 1.35);
+  updateTalk();
+  updateChatter(dt);
   world.follow(started ? pl.x : 0, started ? pl.z : 12);
   world.update(dt, time, camera);
 }
@@ -1005,10 +1202,17 @@ if (TEST) {
     start,
     info: () => ({
       started, houseFinished: world.house.visible, progress: { inventory: { ...progress.inventory }, gathered: [...progress.gathered], built: structuredClone(progress.built), photos: Object.keys(progress.photos), plots: { ...progress.plots }, jobs: { ...progress.jobs }, opening: progress.opening, errands: { ...progress.errands } }, x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), y: +pl.y.toFixed(2), speed: +pl.speed.toFixed(2), camDist: +cam.dist.toFixed(2), zone: lastZone, near: near?.name ?? null,
-      speaking: speaking?.name ?? null, yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
+      speaking: speaking?.name ?? null, talkBlend: talkView.blend,
+      cameraPosition: camera.position.toArray(), cameraQuaternion: camera.quaternion.toArray(),
+      yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
       villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state })),
     }),
-    warp(x, z) { pl.x = x; pl.z = z; pl.y = 0; cam.x = x; cam.z = z; },
+    warp(x, z) {
+      pl.x = cam.x = x;
+      pl.z = cam.z = z;
+      pl.y = cam.y = groundAt(x, z);
+      pl.vx = pl.vz = 0;
+    },
     // run the game forward without waiting on frames (headless browsers draw slowly)
     sim(seconds, hold = []) {
       for (const k of hold) keys.add(k);
