@@ -1,3 +1,5 @@
+import { inventoryPanels } from './inventory-panels.js';
+import { itemIcon, stockedItems } from './item-ui.js';
 import { chapter, remember } from './life.js';
 import { villageLife } from './village-life.js';
 import { greetings, topics, chatter } from './dialogue.js';
@@ -446,87 +448,84 @@ function restoreGameFocus() {
 }
 const backpack = $('backpack');
 const exchange = $('exchange');
-const exchangeItem = $('exchange-item');
-const exchangeCount = $('exchange-count');
-const exchangeStatus = $('exchange-status');
-let handoff = null;
-
-function stockedItems(stock) {
-  return Object.keys(itemNames).filter(item => stock[item] > 0);
-}
-
-function itemRow(label, count) {
-  const row = document.createElement('li');
-  const name = document.createElement('span');
-  const quantity = document.createElement('strong');
-  name.textContent = label;
-  quantity.textContent = count;
-  row.append(name, quantity);
-  return row;
-}
+const itemsBtn = $('talk-items');
+const inventory = inventoryPanels(progress, {
+  hasPickaxe: () => done('cottage'),
+  jobs: () => villageJobs.filter(job => progress.errands[job.id] === 'carrying'),
+  context: item => {
+    const villager = speaking ?? near;
+    if (!speaking && (item === 'wood' || item === 'copper') && nearPoint(...workbench)) {
+      return { label: 'Open workbench', run: craft };
+    }
+    if (!villager || !(progress.inventory[item] > 0)) return null;
+    return { label: 'Give to ' + villager.name, run() {
+      if (speaking !== villager) openConversation(villager);
+      inventory.openExchange(villager, true, item);
+    } };
+  },
+  openExchange: () => setConversationPanel('exchange'),
+  closeExchange: () => {
+    setConversationPanel(null);
+    itemsBtn.focus({ preventScroll: true });
+  },
+  transfer: ({ villager, giving, from, to, item, count }) => {
+    if (speaking !== villager || !moveItems(from, to, item, count)) return false;
+    if (giving) life.give(villager.name, item);
+    if (giving && villager.name === 'Bruno' && item === 'planks' && count >= 2 && progress.life.arrival) {
+      progress.life.marketShelf = true;
+      remember(progress.life, 'Bruno', 'Brought enough planks for Hazel’s market shelf.');
+    }
+    const [label, plural] = itemNames[item];
+    const singular = { planks: 'plank', apples: 'apple' }[item] ?? label.toLowerCase();
+    const amount = count + ' ' + (count === 1 ? singular : plural);
+    commitProgress(giving ? 'Gave ' + villager.name + ' ' + amount + '.' : 'Received ' + amount + ' from ' + villager.name + '.');
+    let reply = giving ? 'Thank you! I’ll keep it here if you need it back.' : 'Here you go. I put ' + amount + ' in your backpack.';
+    if (giving && villager.name === 'Pip' && item === 'apples') reply = 'Orchard apples! I’ll save them for the next tray.';
+    if (giving && villager.name === 'Bruno' && item === 'planks' && count >= 2 && progress.life.marketShelf) {
+      reply = 'That’s enough for the shelf Hazel asked for. Look for it by her market stall.';
+    }
+    showAnswer(villager, reply);
+    showTransfer(villager, item, count, giving);
+    return true;
+  },
+});
 
 function openBackpack() {
   if (!started || document.querySelector('dialog[open]')) return;
-  if (speaking) endConversation();
   keys.clear();
-  const items = stockedItems(progress.inventory);
-  $('backpack-items').replaceChildren(...items.map(item => itemRow(itemNames[item][0], progress.inventory[item])));
-  $('backpack-empty').hidden = items.length > 0;
-  $('backpack-tools').hidden = !progress.started;
-  $('backpack-tool-list').textContent = done('cottage') ? 'Hatchet · Pickaxe' : 'Hatchet';
-  const errands = villageJobs.filter(job => progress.errands[job.id] === 'carrying');
-  $('backpack-errands').hidden = !errands.length;
-  $('backpack-job-items').replaceChildren(...errands.map(job => itemRow(job.cargo, 1)));
-  backpack.showModal();
+  inventory.showBackpack();
 }
 
 $('open-backpack').addEventListener('click', openBackpack);
-backpack.addEventListener('close', restoreGameFocus);
-$('exchange-cancel').addEventListener('click', () => setConversationPanel('topics'));
-
-function updateExchangeCount() {
-  const available = handoff.from[exchangeItem.value];
-  exchangeCount.max = available;
-  exchangeCount.value = 1;
-  exchangeStatus.textContent = available + ' available';
-}
-
-exchangeItem.addEventListener('change', updateExchangeCount);
-
-function openExchange(villager, giving) {
-  const supplies = progress.villagerSupplies[villager.name];
-  const from = giving ? progress.inventory : supplies;
-  const to = giving ? supplies : progress.inventory;
-  const items = stockedItems(from);
-  if (!items.length) {
-    showAnswer(villager, giving ? 'Your backpack is empty. Bring something with you next time.' : 'I’m out of spare supplies right now.');
-    return;
-  }
-  handoff = { villager, giving, from, to };
-  $('exchange-title').textContent = giving ? 'Give to ' + villager.name : 'Take from ' + villager.name;
-  $('exchange-submit').textContent = giving ? 'Give' : 'Take';
-  exchangeItem.replaceChildren(...items.map(item => new Option(itemNames[item][0] + ' · ' + from[item], item)));
-  updateExchangeCount();
-  setConversationPanel('exchange');
-}
-
-exchange.addEventListener('submit', event => {
-  event.preventDefault();
-  if (!speaking || !handoff) return;
-  const { villager, giving, from, to } = handoff;
-  const item = exchangeItem.value;
-  const count = exchangeCount.valueAsNumber;
-  if (!moveItems(from, to, item, count)) {
-    exchangeStatus.textContent = 'Choose an available quantity.';
-    return;
-  }
-  if (giving) life.give(villager.name, item);
-  const [label, plural] = itemNames[item];
-  const singular = { planks: 'plank', apples: 'apple' }[item] ?? label.toLowerCase();
-  const amount = count + ' ' + (count === 1 ? singular : plural);
-  commitProgress(giving ? 'Gave ' + villager.name + ' ' + amount + '.' : 'Received ' + amount + ' from ' + villager.name + '.');
-  showAnswer(villager, giving ? 'Thanks! I’ll keep the supplies here if you need them back.' : 'Here you go. I put ' + amount + ' in your backpack.');
+backpack.addEventListener('close', () => {
+  if (!speaking) restoreGameFocus();
+  else if (exchange.hidden) talkBtn.focus({ preventScroll: true });
 });
+
+let flight, transferGesture;
+function showTransfer(villager, item, count, giving) {
+  inventory.receipt(item, giving ? -count : count);
+  const marker = $('item-flight');
+  flight?.cancel();
+  marker.hidden = true;
+  if (reducedMotion.matches) return;
+  const a = giving ? pl : villager;
+  const b = giving ? villager : pl;
+  transferGesture = { giver: giving ? player : villager.c, receiver: giving ? villager.c : player, left: .46 };
+  const point = actor => screenAt(actor.x, groundAt(actor.x, actor.z) + 1.04, actor.z);
+  const start = point(a), end = point(b);
+  if (!start.on || !end.on) return;
+  const at = (x, y) => 'translate(' + (x - 19) + 'px,' + (y - 19) + 'px)';
+  marker.replaceChildren(itemIcon(item));
+  marker.style.left = marker.style.top = '0';
+  marker.hidden = false;
+  flight = marker.animate([
+    { transform: at(start.x, start.y), opacity: .3 },
+    { transform: at((start.x + end.x) / 2, Math.min(start.y, end.y) - 25), opacity: 1 },
+    { transform: at(end.x, end.y), opacity: 0 },
+  ], { duration: 460, easing: 'ease-out' });
+  flight.onfinish = () => { marker.hidden = true; };
+}
 
 album.addEventListener('close', restoreGameFocus);
 
@@ -578,16 +577,32 @@ function commitProgress(message) {
   refreshProjects(message);
 }
 
-function build(name) {
+function projectDonation(name) {
   const { stock, contributions, arrival } = progress.life;
-  let donation;
-  if (arrival && !contributions[name]) {
-    donation = Object.keys(projects[name].needs).find(item => stock[item] > 0 && projects[name].needs[item] > (progress.built[name][item] ?? 0));
-    if (donation) {
-      stock[donation]--;
-      progress.built[name][donation] = (progress.built[name][donation] ?? 0) + 1;
-      contributions[name] = donation;
-    }
+  if (!arrival || contributions[name]) return null;
+  return Object.keys(projects[name].needs).find(item => stock[item] > 0 && projects[name].needs[item] > (progress.built[name][item] ?? 0));
+}
+
+function inspectProject(name) {
+  if (!progress.life.arrival) return build(name);
+  const project = projects[name];
+  const contribution = projectDonation(name);
+  const items = Object.entries(project.needs).map(([item, total]) => {
+    const missing = Math.max(0, total - (progress.built[name][item] ?? 0));
+    const neighbor = Number(item === contribution);
+    const yours = Math.min(missing - neighbor, progress.inventory[item]);
+    return { item, yours, neighbor, remaining: missing - neighbor - yours };
+  });
+  life.projectPreview(project.title, items, project.villagers[0], () => build(name));
+}
+
+function build(name) {
+  const { stock, contributions } = progress.life;
+  const donation = projectDonation(name);
+  if (donation) {
+    stock[donation]--;
+    progress.built[name][donation] = (progress.built[name][donation] ?? 0) + 1;
+    contributions[name] = donation;
   }
   const help = donation ? projects[name].villagers[0] + ' brought ' + donation + ' from the village supplies. ' : '';
   const added = contribute(progress, name);
@@ -628,6 +643,7 @@ function plannerButton(parent, label, action) {
   button.textContent = label;
   button.addEventListener('click', action);
   parent.append(button);
+  return button;
 }
 
 function renderPlanner() {
@@ -771,6 +787,7 @@ function nearbyAction() {
       harvestGesture = { kind: node.kind, left: .55 };
       pl.ry = Math.atan2(node.x - pl.x, node.z - pl.z);
       world.gather(prop, node.kind);
+      inventory.receipt(node.kind, node.amount);
       commitProgress('Gathered ' + node.amount + ' ' + node.kind + '.');
     } };
   }
@@ -788,7 +805,7 @@ function nearbyAction() {
     if (!project.needs || (name in neighborhood && !(name in progress.plots))) continue;
     const [x, z] = name in neighborhood ? plotProject(progress, name).approach : project.approach;
     if (done(name) || (name === 'bakery' && !done('cottage')) || (name === 'beacon' && !done('bakery')) || !nearPoint(x, z)) continue;
-    return { position: { x, y: groundAt(x, z), z }, label: 'Build ' + project.title, run: () => build(name) };
+    return { position: { x, y: groundAt(x, z), z }, label: 'Build ' + project.title, run: () => inspectProject(name) };
   }
   return null;
 }
@@ -800,8 +817,11 @@ function brunoLine() {
     return 'Take my hatchet across Bramble Creek. Chop the marked branches, then bring the wood to my bench northwest of the plaza.';
   }
   if (!done('cottage') && progress.inventory.planks) {
+    const before = progress.inventory.planks;
     build('cottage');
-    return 'Thanks for bringing the planks!';
+    const used = before - progress.inventory.planks;
+    if (used) showTransfer(byName.Bruno, 'planks', used, true);
+    return done('cottage') ? 'The cottage is ready. Thanks for helping me finish it.' : 'Thanks for bringing the planks. The last board will go in when we have enough.';
   }
   if (!done('cottage')) return 'My bench is northwest of the plaza, next to the cottage frame. I need two planks.';
   if (!done('bakery')) return 'Your pickaxe is ready. Pip left an apple basket at the orchard. The bakery frame is southeast of the plaza.';
@@ -886,11 +906,12 @@ function setConversationPanel(section) {
   panel.hidden = !section;
   exchange.hidden = section !== 'exchange';
   topicList.hidden = section !== 'topics';
-  if (section !== 'exchange') handoff = null;
+  panel.classList.toggle('is-exchange', section === 'exchange');
+  if (section !== 'exchange') inventory.resetExchange();
   panel.scrollTop = 0;
   updateTalk();
   if (section === 'topics') renderTopics();
-  else if (section === 'exchange') exchangeItem.focus({ preventScroll: true });
+  else if (section === 'exchange') inventory.focusExchange();
   else {
     const focus = speaking ? talkBtn : canvasEl;
     focus.focus({ preventScroll: true });
@@ -901,6 +922,7 @@ function toggleTopics() {
   setConversationPanel(!panel.hidden && exchange.hidden ? null : 'topics');
 }
 
+itemsBtn.addEventListener('click', () => inventory.openExchange(speaking, stockedItems(progress.inventory).length > 0));
 askBtn.addEventListener('click', toggleTopics);
 goodbyeBtn.addEventListener('click', endConversation);
 
@@ -949,7 +971,11 @@ function jobReply(jobs) {
 function deliveryFor(villager) {
   const job = villager.job;
   if (job && progress.errands[job.id] === 'carrying') return job.delivery.split(' to ')[0];
-  if (villager === byName.Bruno && progress.started && !done('cottage') && progress.inventory.planks > 0) return 'Deliver planks';
+  if (villager === byName.Bruno && progress.started && !done('cottage') && progress.inventory.planks > 0) {
+    const needed = projects.cottage.needs.planks - (progress.built.cottage.planks ?? 0) - Number(projectDonation('cottage') === 'planks');
+    const offer = Math.min(progress.inventory.planks, needed);
+    return offer ? 'Offer ' + offer + (offer === 1 ? ' plank' : ' planks') : 'Accept help';
+  }
   return null;
 }
 
@@ -963,7 +989,7 @@ function greet(villager) {
   if (errand) return 'How’s your errand for ' + errand.villager + ' coming along?';
   const activity = life.activityGreeting(villager.name);
   if (activity) return activity;
-  const shared = life.helpMessage(villager.name);
+  const shared = life.giftGreeting(villager.name) ?? life.helpMessage(villager.name);
   if (shared) return shared;
   if (activeJobs().length) {
     if (!done('cottage') && villager !== byName.Bruno && progress.started) {
@@ -1067,8 +1093,8 @@ function conversationChoices(villager) {
     option('Village news', () => progress.opening ? 'The meadow neighborhood is open. Everyone’s talking about the opening-day photograph.'
       : done('bakery') ? 'The bakery is open. The next big thing is the neighborhood across Bramble Creek.'
       : 'Bruno is looking for help rebuilding. Hazel, Reed, and Clover also have work available.'),
-    { label: 'Give an item', run: () => openExchange(villager, true) },
-    { label: 'Take supplies', run: () => openExchange(villager, false) },
+    { label: 'Give an item', run: () => inventory.openExchange(villager, true) },
+    { label: 'Take supplies', run: () => inventory.openExchange(villager, false) },
   ];
   if (!job && villager !== byName.Bruno) more.splice(1, 0, option('What’s new?', () => villagerLine(villager)));
   if (overheard.length) more.push(option('What have people been saying?', () => 'I heard this nearby. “' + overheard.at(-1).split(' · ').slice(1).join(' · ') + '”'));
@@ -1177,7 +1203,7 @@ let unsolicited = null;
 const life = villageLife(progress, {
   save: commitProgress, persist: () => saveProgress(progress), refresh: refreshProjects, done, photo: takePhoto,
   whisper: (villager, words) => { unsolicited = { villager, words, until: time + 7 }; },
-  button: plannerButton, focus: restoreGameFocus, release: endConversation,
+  button: plannerButton, focus: restoreGameFocus, release: endConversation, receipt: inventory.receipt,
   position: () => [pl.x, pl.z], near: (x, z, radius) => Math.hypot(pl.x - x, pl.z - z) < radius,
 });
 addEventListener('pagehide', () => saveProgress(progress));
@@ -1201,6 +1227,7 @@ function updateTalk() {
   const accessibleLabel = label === 'Ask' ? 'Ask a question' : label;
   if (talkBtn.getAttribute('aria-label') !== accessibleLabel) talkBtn.setAttribute('aria-label', accessibleLabel);
   talkBtn.setAttribute('aria-expanded', String(!!speaking && !panel.hidden));
+  itemsBtn.hidden = !speaking || !panel.hidden;
   askBtn.hidden = !delivery || !panel.hidden;
   goodbyeBtn.hidden = !speaking;
   $('hud').classList.toggle('talking', !!speaking);
@@ -1266,6 +1293,16 @@ function update(dt) {
       v.c.head.rotation.x += gesture * 0.13;
       v.c.arms[1].rotation.x -= gesture * 0.34;
     }
+  }
+  if (transferGesture) {
+    const { giver, receiver, left } = transferGesture;
+    if (!reducedMotion.matches) {
+      const phase = 1 - left / .46;
+      giver.arms[1].rotation.x -= .95 * Math.sin(Math.PI * phase);
+      receiver.arms[1].rotation.x -= .65 * Math.sin(Math.PI * phase) * phase;
+    }
+    transferGesture.left -= dt;
+    if (transferGesture.left <= 0) transferGesture = null;
   }
   speechGesture = Math.max(0, speechGesture - dt);
   if (!started) {

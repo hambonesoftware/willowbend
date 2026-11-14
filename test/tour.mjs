@@ -339,20 +339,19 @@ if (!only || only === 'route') {
     await talkToPip();
     await chooseMore('Take supplies');
     check(await page.locator('dialog[open]').count() === 0, 'item exchanges stay in the world with no modal');
-    await handoff.locator('#exchange-item').selectOption('bread');
-    await handoff.getByRole('button', { name: 'Take' }).click();
+    await handoff.getByRole('button', { name: 'Bread, 1 available', exact: true }).click();
+    await handoff.getByRole('button', { name: 'Take', exact: true }).click();
     check((await info(page)).progress.inventory.bread === 1, 'taking supplies adds a villager’s item to the backpack');
     await chooseMore('Give an item');
     await handoff.getByRole('button', { name: 'Cancel' }).click();
-    check((await info(page)).progress.inventory.bread === 1 && await conversation.isVisible() && !(await handoff.isVisible()),
-      'canceling a transfer keeps the item and returns to the replies');
-    await conversation.getByRole('button', { name: 'More topics' }).click();
-    await conversation.getByRole('button', { name: 'Give an item' }).click();
-    await handoff.getByRole('button', { name: 'Give' }).click();
+    check((await info(page)).progress.inventory.bread === 1 && !(await conversation.isVisible()) && !(await handoff.isVisible()),
+      'canceling a transfer keeps the item and returns to the conversation');
+    await page.getByRole('button', { name: 'Exchange items' }).click();
+    await handoff.getByRole('button', { name: 'Give', exact: true }).click();
     check((await info(page)).progress.inventory.bread === 0, 'giving an item removes the selected quantity');
     await chooseMore('Take supplies');
-    await handoff.locator('#exchange-item').selectOption('bread');
-    await handoff.getByRole('button', { name: 'Take' }).click();
+    await handoff.getByRole('button', { name: 'Bread, 1 available', exact: true }).click();
+    await handoff.getByRole('button', { name: 'Take', exact: true }).click();
     await closeConversation(page);
     await page.keyboard.press('KeyB');
     const backpack = page.locator('#backpack');
@@ -435,7 +434,7 @@ if (!only || only === 'route') {
     check((await speech.locator('#speech-reply').textContent()).includes('My basket is at the north edge of the orchard'),
       'Pip can share the bakery’s orchard clue while jobs are active');
     await chooseMore('Take supplies');
-    check(await handoff.locator('#exchange-item option[value="bread"]').count() === 0, 'villager stock stays depleted after reload');
+    check(await handoff.locator('[data-item="bread"]').count() === 0, 'villager stock stays depleted after reload');
     await closeConversation(page);
     await visit(-5, -32, 'woods wood');
     await visit(-38, 1, 'orchard apples');
