@@ -223,8 +223,8 @@ if (!only || only === 'route') {
     };
     const talkToPip = async () => {
       await page.evaluate(() => {
-        window.WB.warp(5, 5.6);
-        window.WB.positionVillager('Pip', 5, 5.6);
+        window.WB.warp(4, 4);
+        window.WB.positionVillager('Pip', 4, 4);
         window.WB.sim(0.25);
       });
       await page.keyboard.press('Space');
