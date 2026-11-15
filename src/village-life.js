@@ -1,3 +1,4 @@
+import { itemIcon, itemLabel } from './item-ui.js';
 import { villageMusic } from './village-music.js';
 import { advanceDay, calendar, chapter, DAY_SECONDS, friendship, letters, locations, remember } from './life.js';
 import { raceCourse, scheduledSpot, timingHit, treasureSite } from './activities.js';
@@ -38,7 +39,18 @@ export function villageLife(progress, view) {
     journal.classList.toggle('scene-sheet', inWorld);
     const actions = $('journal-options');
     actions.replaceChildren();
-    for (const [label, run] of options) view.button(actions, label, run);
+    for (const [label, run, item, cost] of options) {
+      const button = view.button(actions, label, run);
+      if (!item) continue;
+      button.classList.add('item-action');
+      const copy = document.createElement('span');
+      copy.className = 'item-action-copy';
+      const note = document.createElement('small');
+      note.textContent = cost;
+      copy.append(label, note);
+      button.setAttribute('aria-label', label);
+      button.replaceChildren(itemIcon(item), copy);
+    }
     if (!journal.open) {
       view.release();
       if (inWorld) journal.show();
@@ -93,41 +105,101 @@ export function villageLife(progress, view) {
         book(true);
       }]);
     }
-    const summary = isHome ? ['Outfit · ' + life.home.outfit, 'Outside · ' + life.home.decoration] :
-      Object.keys(life.stock).map(item => itemNames[item][0] + ' · ' + life.stock[item]);
-    if (!isHome) for (const item of Object.keys(life.stock)) {
-      if (life.stock[item] > 0) options.push(['Take ' + itemNames[item][0].toLowerCase(), () => {
-        moveItems(life.stock, progress.inventory, item, 1);
-        save();
-        book(false);
-      }]);
-      if (progress.inventory[item] > 0) options.push(['Share ' + itemNames[item][0].toLowerCase(), () => {
-        moveItems(progress.inventory, life.stock, item, 1);
-        save();
-        book(false);
-      }]);
-    }
+    if (!isHome) return openSupplies();
     options.push(['Read journal', showJournal]);
-    open(isHome ? 'Your cottage' : 'Village supplies', summary, options);
+    open('Your cottage', ['Outfit · ' + life.home.outfit, 'Outside · ' + life.home.decoration], options);
+  }
+
+  function openSupplies() {
+    const cards = Object.keys(life.stock).map(item => {
+      const card = document.createElement('section');
+      card.className = 'supply-card';
+      const info = document.createElement('p');
+      const label = itemLabel(item);
+      info.textContent = label + ' · Crate ' + life.stock[item] + ' · Backpack ' + (progress.inventory[item] ?? 0);
+      const buttons = document.createElement('div');
+      buttons.className = 'supply-actions';
+      function offer(taking) {
+        const source = taking ? life.stock : progress.inventory;
+        const target = taking ? progress.inventory : life.stock;
+        const button = view.button(buttons, (taking ? 'Take ' : 'Share ') + label.toLowerCase(), () => {
+          if (!moveItems(source, target, item, 1)) return;
+          save();
+          view.receipt(item, taking ? 1 : -1);
+          openSupplies();
+          if (!journal.querySelector('[data-supply-action="' + action + '"]')?.disabled) {
+            journal.querySelector('[data-supply-action="' + action + '"]')?.focus();
+          } else {
+            journal.querySelector('[data-supply-action="' + alternate + '"]:enabled')?.focus();
+          }
+        });
+        const action = item + (taking ? '-take' : '-share');
+        const alternate = item + (taking ? '-share' : '-take');
+        button.dataset.supplyAction = action;
+        button.disabled = !(source[item] > 0);
+      }
+      card.append(itemIcon(item), info, buttons);
+      offer(true);
+      offer(false);
+      return card;
+    });
+    open('Village supplies', cards, [['Read journal', showJournal]]);
+  }
+
+  function recipePreview(input, count, output, yieldCount) {
+    const row = document.createElement('div');
+    row.className = 'recipe-preview';
+    const amount = document.createElement('strong');
+    amount.textContent = count + ' ' + itemLabel(input).toLowerCase() + ' → ' + yieldCount + ' ' +
+      (yieldCount === 1 && output === 'planks' ? 'plank' : itemLabel(output).toLowerCase());
+    row.append(itemIcon(input), amount, itemIcon(output));
+    return row;
   }
 
   function recipes() {
     const stock = progress.inventory;
-    const options = [1, 3, 5].filter(count => stock.wood >= count).map(count => ['Cut ' + count + ' ' + (count === 1 ? 'plank' : 'planks'), () => {
-      stock.wood -= count;
-      stock.planks += count;
-      journal.close();
-      save('Cut ' + count + ' ' + (count === 1 ? 'plank' : 'planks') + ' at the workbench.');
-    }]);
-    if (view.done('bakery') && stock.copper >= 2 && !stock.lantern && !view.done('beacon')) {
-      options.push(['Make a lantern', () => {
-        stock.copper -= 2;
-        stock.lantern++;
+    const options = [];
+    const contents = ['In your backpack · ' + stock.wood + ' wood · ' + stock.planks + ' planks · ' + stock.copper + ' copper'];
+    contents.push(recipePreview('wood', 1, 'planks', 1));
+    for (const count of [1, 3, 5].filter(count => stock.wood >= count)) {
+      const label = 'Cut ' + count + ' ' + (count === 1 ? 'plank' : 'planks');
+      options.push([label, () => {
+        stock.wood -= count;
+        stock.planks += count;
         journal.close();
-        save('Made a lantern for the beacon.');
-      }]);
+        save(label + ' at the workbench.');
+        view.receipt('planks', count);
+      }, 'planks', count + ' wood → ' + count + (count === 1 ? ' plank' : ' planks')]);
     }
-    open('Workbench', ['Wood · ' + stock.wood, 'Two copper make a beacon lantern once the bakery reopens.'], options);
+    if (!view.done('beacon')) {
+      contents.push(recipePreview('copper', 2, 'lantern', 1));
+      if (!view.done('bakery')) contents.push('The lantern recipe unlocks when the bakery reopens.');
+      else if (stock.lantern) contents.push('You already have a lantern for the watchtower.');
+      if (view.done('bakery') && stock.copper >= 2 && !stock.lantern) {
+        options.push(['Make a lantern', () => {
+          stock.copper -= 2;
+          stock.lantern++;
+          journal.close();
+          save('Made a lantern for the beacon.');
+          view.receipt('lantern', 1);
+        }, 'lantern', '2 copper → 1 lantern']);
+      }
+    }
+    open('Workbench', contents, options);
+  }
+
+  function projectPreview(title, materials, name, build) {
+    const rows = materials.map(({ item, yours, neighbor, remaining }) => {
+      const row = document.createElement('div');
+      row.className = 'project-material';
+      const words = document.createElement('span');
+      words.textContent = itemLabel(item) + ' · You ' + yours + ' · ' + name + ' ' + neighbor + ' · Still needed ' + remaining;
+      row.append(itemIcon(item), words);
+      return row;
+    });
+    const options = materials.some(item => item.yours || item.neighbor)
+      ? [['Contribute supplies', () => { journal.close(); build(); }]] : [];
+    open(title, rows, options, true);
   }
 
   function startTiming(kind, spot, recipe) {
@@ -197,6 +269,7 @@ export function villageLife(progress, view) {
   function give(name, item) {
     const favorites = { Mabel: 'pebble', Pip: 'apples', Bruno: 'wood', Dot: 'bread', Biscuit: 'apples', Fennel: 'pebble', Hazel: 'cider', Reed: 'stone', Clover: 'apples' };
     remember(life, name, 'You brought ' + itemNames[item][1] + '.', item === favorites[name] ? 2 : 1);
+    if (name === 'Pip' && item === 'apples') friendship(life, name).appleGiftPending = true;
   }
 
   function personal(name) {
@@ -214,6 +287,14 @@ export function villageLife(progress, view) {
       save();
       return line;
     }];
+  }
+
+  function giftGreeting(name) {
+    const bond = life.bonds[name];
+    if (name !== 'Pip' || !bond?.appleGiftPending) return null;
+    bond.appleGiftPending = false;
+    save();
+    return 'I remember the apple you brought me. I saved it for the next tray.';
   }
 
   function helpMessage(name) {
@@ -247,6 +328,7 @@ export function villageLife(progress, view) {
       life.appleGreeting = true;
       remember(life, 'Pip', 'Helped gather the apples Pip dropped.');
       progress.inventory.apples++;
+      view.receipt('apples', 1);
       save('Pip tucked one apple into your backpack for later.');
       return 'You got the last one! Clover says I should carry fewer. I say we should get a bigger basket.';
     });
@@ -495,7 +577,7 @@ export function villageLife(progress, view) {
     return null;
   }
 
-  return { action, activityGreeting, destination, give, recipes, topics, update, visit, helpMessage, showJournal,
+  return { action, activityGreeting, destination, give, giftGreeting, recipes, projectPreview, topics, update, visit, helpMessage, showJournal,
     get festival() { return festivalTime > 0; },
     get racePoint() { return task?.kind === 'Race' ? raceCourse[task.next] : null; },
     get day() { return day; },

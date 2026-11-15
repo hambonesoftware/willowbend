@@ -34,9 +34,11 @@ Progress and photos save to this browser’s local storage. Keep using the same 
 
 ## Backpack and supplies
 
-Open **Backpack** from the HUD or press **B**. Supplies stack with no weight or slot limit. Tools and items needed for an active job have their own sections.
+Open **Backpack** from the HUD or press **B**. Supplies stack with no weight or slot limit. Browse supplies, tools, and job items, then select an illustrated item to see what it does and any nearby action.
 
-While talking, choose **Ask**, then **More topics** for **Give an item** and **Take supplies**. Pick an item and how many to transfer. Villagers start with different supplies and hold on to anything you give them so you can take it back later. Your backpack and each villager’s supplies are saved on the device.
+While talking, choose **Items** to give a gift or take supplies. Pick an item tile and use the quantity buttons for larger stacks. Villagers start with different supplies and hold on to items you give them. Exchanges and friendship memories save on the device.
+
+The workbench previews what each recipe spends and produces. The village crate shows both inventories. At a building site, check what you and your neighbors can contribute and how much the project will still need.
 
 ## Talk and listen
 
@@ -58,6 +60,6 @@ Return to the board to assign Pip’s apple delivery and Bruno’s timber haul. 
 
 ## Browser tour
 
-Run `npm test` with Edge or Chrome installed. Set `BROWSER_PATH` for a different Chromium executable, or install Playwright Chromium with `npx playwright-core install chromium`. Run `npm run test:story` for the Lantern Night browser playthrough. The tour saves screenshots to `test-results/`. The story suite takes a screenshot on failure and replays the festival decision on a touch viewport.
+Run `npm test` with Edge or Chrome installed. Set `BROWSER_PATH` for a different Chromium executable, or install Playwright Chromium with `npx playwright-core install chromium`. Run `npm run test:story` for Lantern Night and `npm run test:inventory` for the mobile item exchange and friendship memory checks. The tour saves screenshots to `test-results/`. The story suite takes a screenshot on failure and replays the festival decision on a touch viewport.
 
 To check a deployment that includes the same test hooks and features, set `WB_URL` to its base URL before running `npm test`. The [GitHub Pages site](https://hambonesoftware.github.io/willowbend/) is served from the repository.

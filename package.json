@@ -5,7 +5,8 @@
   "scripts": {
     "serve": "node test/serve.mjs 8934",
     "test": "node test/life.mjs && node test/tour.mjs",
-    "test:story": "node test/story.mjs"
+    "test:story": "node test/story.mjs",
+    "test:inventory": "node test/inventory.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.49.1"

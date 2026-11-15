@@ -56,6 +56,12 @@ export function lifeScenery(scene, buildings) {
   for (const [lx, lz] of [[-3, 21], [1.5, 13], [3, -9], [-2, -19]]) {
     pathLights.add(lantern(lx, lz, 1.35));
   }
+  const marketShelf = new THREE.Group();
+  marketShelf.position.set(-7.2, groundAt(-7.2, 24.7), 24.7);
+  for (const sx of [-.55, .55]) marketShelf.add(at(box(.10, 1, .30, 0x9f6344, .02), sx, .5, 0));
+  for (const y of [.36, .85]) marketShelf.add(at(box(1.25, .1, .37, 0xd9a368, .025), 0, y, 0));
+  for (const sx of [-.31, 0, .29]) marketShelf.add(at(ball(.11, 0xe07854, .02), sx, .98, 0));
+  scene.add(marketShelf);
   const crate = box(1.1, .7, .8, 0xa97449, .025);
   crate.position.set(1.45, groundAt(1.45, 3.3) + .4, 3.3);
   const tree = new THREE.Mesh(globe, amber);
@@ -77,6 +83,7 @@ export function lifeScenery(scene, buildings) {
     mat.visible = home.visible && life.home.decoration === 'Welcome mat';
     garden.visible = !!life.garden;
     crate.visible = home.visible;
+    marketShelf.visible = !!life.marketShelf;
     festival.visible = !!life.festival;
     shares.visible = life.festival === 'share';
     keepsake.visible = life.festival === 'remember';
