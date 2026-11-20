@@ -60,8 +60,10 @@ export function villageCottage(x, z, ry, { wall, roof, door, w = 2.8, h = 1.7, d
   // Open shutters and a deep sill keep a home readable from a moving camera.
   for (const side of [-1, 1]) {
     const wx = side * w * .31, wy = .3 + bodyHeight * .56;
-    group.add(at(box(.65, .83, .11, timber, 0, .055), wx, wy, front + .015),
-      at(box(.51, .67, .065, glass, 0, .045), wx, wy, front + .026),
+    for (const edge of [-1, 1]) group.add(
+      at(box(.07, .83, .11, timber, 0, .025), wx + edge * .29, wy, front + .015),
+      at(box(.51, .08, .11, timber, 0, .025), wx, wy + edge * .375, front + .015));
+    group.add(at(box(.51, .67, .065, glass, 0, .045), wx, wy, front + .026),
       at(box(.025, .68, .04, paleTimber, 0), wx, wy, front + .13),
       at(box(.53, .025, .04, paleTimber, 0), wx, wy, front + .13));
     const shutter = at(box(.25, .77, .06, paint, 0, .025), wx + side * .47, wy, front - .025);
