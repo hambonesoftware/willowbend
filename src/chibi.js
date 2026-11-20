@@ -1,3 +1,4 @@
+import { storyMaterial } from './art-materials.js';
 // Chibi villagers: big round head, tall glossy eyes, blush, mitten hands, stubby legs.
 // Every character is a small rig of pivots (hips, arms, head) so one walk cycle animates them all.
 import * as THREE from 'three';
@@ -25,14 +26,14 @@ export function chibi(o) {
     body.add(hip);
     legs.push(hip);
   }
-  const torso = ball(0.4, o.outfit, T);
+  const torso = ball(0.4, storyMaterial(o.outfit, 'cloth'), T);
   torso.scale.set(1, 1.12, 0.9);
   body.add(at(torso, 0, 0.74, 0));
   const arms = {};
   for (const sx of [-1, 1]) {
     const a = new THREE.Group();
     a.position.set(sx * 0.34, 0.95, 0);
-    a.add(at(cap(0.095, 0.22, o.sleeve ?? o.outfit, T), 0, -0.19, 0));
+    a.add(at(cap(0.095, 0.22, storyMaterial(o.sleeve ?? o.outfit, 'cloth'), T), 0, -0.19, 0));
     a.add(at(ball(0.12, limb, T, 14, 10), 0, -0.41, 0));
     a.rotation.z = sx * 0.5;
     body.add(a);
@@ -139,7 +140,7 @@ export function makeKid() {
   const c = chibi({ skin: 0xffd9b8, outfit: 0x4f8fd6, legs: 0x6b5a4a, shoes: 0x8a4f34, hair: 0xb5562e });
   const sc = torus(0.3, 0.09, 0xe8554e, 0.028); sc.rotation.x = Math.PI / 2; c.body.add(at(sc, 0, 1.02, 0.02));
   const tail = box(0.15, 0.36, 0.07, 0xe8554e, 0.026, 0.03); tail.rotation.z = -0.25; c.body.add(at(tail, 0.22, 0.84, 0.36));
-  c.body.add(at(box(0.54, 0.54, 0.28, 0x9a6a44, 0.03, 0.1), 0, 0.8, -0.42));
+  c.body.add(at(box(0.54, 0.54, 0.28, storyMaterial(0x9a805e, 'cloth'), 0.018, 0.1), 0, 0.8, -0.42));
   const roll = cyl(0.13, 0.13, 0.66, 0x7fc4a0, 0.028, 14); roll.rotation.z = Math.PI / 2; c.body.add(at(roll, 0, 1.13, -0.46));
   return c;
 }

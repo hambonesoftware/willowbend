@@ -61,3 +61,20 @@ jobs:
         with:
           name: willowbend-bakery
           path: test-results/
+  village-art:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run test:art
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: willowbend-village-art
+          path: test-results/

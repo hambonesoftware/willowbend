@@ -3,7 +3,7 @@ import { walkable } from './layout.js';
 const step = .8;
 const neighbors = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]];
 
-// Find footpaths around the cottages and courtyard furniture when a baker changes stations.
+// Find footpaths around the cottages and courtyard furniture when a villager changes stations.
 function route(start, target) {
   const [tx, tz] = target;
   const key = (x, z) => x + ',' + z;

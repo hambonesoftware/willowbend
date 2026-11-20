@@ -1,3 +1,4 @@
+import { villagerRoutine } from '../src/villager-routines.js';
 import { bakeryRoutine, bakeryStations } from '../src/bakery-routines.js';
 import assert from 'node:assert/strict';
 import { advanceDay, calendar, chapter, createLife, DAY_SECONDS, friendship, letters, remember } from '../src/life.js';
@@ -70,6 +71,16 @@ for (const [name, station] of Object.entries(bakeryStations)) {
   assert.deepEqual(scheduledSpot(villager, 'Night', true, false), villager.home);
 }
 
+for (const name of ['Mabel', 'Bruno', 'Dot', 'Biscuit', 'Fennel', 'Hazel', 'Reed']) {
+  const spot = scheduledSpot({ name }, 'Morning', true, false);
+  const villager = { name, x: spot[0], z: spot[1] };
+  assert.ok(villagerRoutine(villager, spot, { phase: 'Morning' }, { arrival: 'welcome' }), name);
+  assert.equal(villagerRoutine(villager, spot, { phase: 'Morning' }, { arrival: null }), null, name);
+  assert.equal(villagerRoutine(villager, spot, { phase: 'Evening' }, { arrival: 'welcome' }), null, name);
+  assert.equal(villagerRoutine(villager, null, { phase: 'Morning' }, { arrival: 'welcome' }), null, name);
+}
+assert.equal(villagerRoutine({ name: 'Dot', x: 12, z: 4 }, [12, 4], { phase: 'Morning' },
+  { arrival: 'welcome', lantern: 'invited' }), null);
 Object.assign(life, { arrival: 'welcome', repair: 'old', batch: true });
 assert.match(chapter(life, () => false)[0], /^II ·/);
 Object.assign(life, { scrapbook: true, lantern: 'found', echo: true, keeper: true });

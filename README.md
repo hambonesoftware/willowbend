@@ -21,7 +21,11 @@ A day lasts about 22 minutes of play. Conversations and menus pause the clock, a
 
 Gathered supplies return the next morning. The crate near the well holds shared supplies and accepts donations. Villagers can pitch in on building projects. Once Mabel welcomes you, the workbench lets you choose a plank batch. Celebrate at the well after solving the mystery and restoring the bakery and beacon. Return to the well in the evening after Lantern Night to catch up with your neighbors.
 
-## The bakery courtyard
+## A living storybook village
+
+Homes, market stalls, the bridge, and the meadow buildings share textured timber, plaster, and tiled roofs. The square has worn paving, gardens soften the doorsteps, and the woods, orchard, glade, and pond use layered greenery and natural ground. Leaves and water move gently, birds circle the pond, and village windows and lamps glow after sunset.
+
+Mabel tends flowers, Bruno works wood, Hazel keeps her ledger, Fennel studies stones, Dot waters plants, Reed watches wildlife, and Biscuit plays. Daytime activities follow their schedules and pause for conversation.
 
 Restoring the bakery opens a tiled shopfront and a courtyard with a bread counter, prep bench, plants, and a place to sit. Pip and Clover wear their own aprons and work there in the morning and afternoon. They put their baking things down to talk, and neighbors give the conversation space. Evening lights the shop windows. The courtyard view comes a little closer as you walk in, and reduced motion quiets the decorative movement.
 
@@ -64,6 +68,6 @@ Return to the board to assign Pip’s apple delivery and Bruno’s timber haul. 
 
 ## Browser tour
 
-Run `npm test` with Edge or Chrome installed. Set `BROWSER_PATH` for a different Chromium executable, or install Playwright Chromium with `npx playwright-core install chromium`. Run `npm run test:story` for Lantern Night, `npm run test:inventory` for item exchanges, and `npm run test:bakery` for bakery routines, walking access, and day, evening, and phone screenshots. The tour saves screenshots to `test-results/`. The story suite takes a screenshot on failure and replays the festival decision on a touch viewport.
+Run `npm test` with Edge or Chrome installed. Set `BROWSER_PATH` for a different Chromium executable, or install Playwright Chromium with `npx playwright-core install chromium`. Run `npm run test:story` for Lantern Night, `npm run test:inventory` for item exchanges, and `npm run test:bakery` for bakery routines, or `npm run test:art` for the village and landmark views, work interruptions, and phone controls after dark. The tour saves screenshots to `test-results/`. The story suite takes a screenshot on failure and replays the festival decision on a touch viewport.
 
 To check a deployment that includes the same test hooks and features, set `WB_URL` to its base URL before running `npm test`. The [GitHub Pages site](https://hambonesoftware.github.io/willowbend/) is served from the repository.

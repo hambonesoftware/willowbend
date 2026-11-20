@@ -1,22 +1,17 @@
 import * as THREE from 'three';
+import { storyMaterial } from './art-materials.js';
 import { at, ball, box, cyl, torus } from './gfx.js';
 import { makeBunny } from './chibi.js';
 
 function baker(clover) {
   const c = makeBunny();
-  const shirt = new THREE.MeshStandardMaterial({ color: clover ? 0x88956a : 0xb97c74, roughness: .95 });
+  const shirt = storyMaterial(clover ? 0x88956a : 0xb97c74, 'cloth');
   // Each bunny has its own outfit material so Clover and Pip stay distinct.
-  const softMaterials = new Map();
   c.body.traverse(part => {
     if (part.isMesh && part.material.color?.getHex() === 0xf291b0) part.material = shirt;
-    if (part.isMesh && !part.userData.ink && part.material.isMeshToonMaterial) {
-      const original = part.material;
-      if (!softMaterials.has(original)) softMaterials.set(original, new THREE.MeshStandardMaterial({ color: original.color, roughness: 1 }));
-      part.material = softMaterials.get(original);
-    }
   });
-  const linen = new THREE.MeshStandardMaterial({ color: clover ? 0xdccaa4 : 0xf3e1bd, roughness: 1 });
-  const pocket = new THREE.MeshStandardMaterial({ color: 0xbda786, roughness: 1 });
+  const linen = storyMaterial(clover ? 0xdccaa4 : 0xf3e1bd, 'cloth');
+  const pocket = storyMaterial(0xbda786, 'cloth');
   const apron = box(.44, .5, .05, linen, .009, .06);
   c.body.add(at(apron, 0, .66, .36));
   c.body.add(at(box(.23, .14, .035, pocket, .006, .025), 0, .64, .4));

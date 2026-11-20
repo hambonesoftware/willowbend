@@ -153,6 +153,14 @@ export function bakeryCourtyard(scene) {
     leaf.rotation.z = Math.sin(i * 2.4) * .7;
     building.add(at(leaf, 1.7 + Math.sin(i * .75) * .21, .5 + i * .09, 1.53));
   }
+  for (const sx of [-1, 1]) {
+    const rear = at(box(.65, .85, .06, glass, 0, .04), sx * 1.02, 1.45, -1.43);
+    windows.push(rear);
+    building.add(rear, at(box(.8, .08, .22, trim, 0), sx * 1.02, .96, -1.48),
+      at(box(.035, .87, .04, trim, 0), sx * 1.02, 1.45, -1.48),
+      at(box(.67, .035, .04, trim, 0), sx * 1.02, 1.45, -1.48));
+  }
+
   // Narrow planks underfoot and old masonry at the entrance.
   for (let i = 0; i < 6; i++) building.add(at(box(.28, .13, .65, trim, 0, .015), -1.8 + i * .29, .15, 1.73));
   const canopy = new THREE.Group();

@@ -1,21 +1,14 @@
-// Cel-shading kit: a 4-step toon ramp, inverted-hull ink lines, and shape helpers.
+// Shared storybook materials, quiet ink edges, and batched shape helpers.
 import * as THREE from 'three';
+import { storyMaterial } from './art-materials.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
-export const INK = 0x4b3140;
+export const INK = 0x594a41;
 
-const ramp = new THREE.DataTexture(new Uint8Array([112, 112, 112, 255, 156, 156, 156, 255, 226, 226, 226, 255, 255, 255, 255, 255]), 4, 1, THREE.RGBAFormat);
-ramp.minFilter = ramp.magFilter = THREE.NearestFilter;
-ramp.generateMipmaps = false;
-ramp.needsUpdate = true;
-export const RAMP = ramp;
-
-const toonCache = new Map();
 export function toon(color, opts) {
-  if (opts) return new THREE.MeshToonMaterial({ color, gradientMap: ramp, ...opts });
-  if (!toonCache.has(color)) toonCache.set(color, new THREE.MeshToonMaterial({ color, gradientMap: ramp }));
-  return toonCache.get(color);
+  if (opts) return new THREE.MeshStandardMaterial({ color, roughness: .96, ...opts });
+  return storyMaterial(color);
 }
 
 // The hull is pushed out along the view-space normal, so the line keeps one weight whatever the
@@ -51,7 +44,7 @@ export function mesh(geo, c, t = 0.032) {
   const m = new THREE.Mesh(geo, typeof c === 'number' ? toon(c) : c);
   m.castShadow = m.receiveShadow = true;
   if (t > 0) {
-    const o = new THREE.Mesh(geo, inkMat(t));
+    const o = new THREE.Mesh(geo, inkMat(t * .6));
     o.castShadow = o.receiveShadow = false;
     o.userData.ink = true;
     m.add(o);

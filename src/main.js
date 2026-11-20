@@ -1,3 +1,5 @@
+import { villagerRoutine } from './villager-routines.js';
+import { dressVillager, animateVillagerWork } from './villager-activities.js';
 import { bakerPath } from './bakery-paths.js';
 import { makePip, makeClover, animateBaker } from './bakery-characters.js';
 import { bakeryRoutine } from './bakery-routines.js';
@@ -61,11 +63,16 @@ const CAST = [
     name: job.villager, make: [makeCat, makeFrog, makeClover][index], home: job.start, job,
   })),
 ].map((v, i) => {
-  const c = v.make();
+  const c = makeResident(v);
   c.ph = i * 1.3;
   scene.add(c.root);
   return { ...v, c, x: 0, z: 0, ry: 0, state: 'pose', timer: rand(0.5, 3), tx: 0, tz: 0, line: 0 };
 });
+function makeResident(villager) {
+  const character = villager.make();
+  dressVillager(character, villager.name);
+  return character;
+}
 const byName = Object.fromEntries(CAST.map(v => [v.name, v]));
 
 // The opening shot: the gang lined up on the south road with the village behind them.
@@ -130,7 +137,13 @@ function blendTalkView(position, target, dt) {
   target.lerp(talkLook, ease);
 }
 function followPose(out, look) {
-  const courtyard = done('bakery') ? Math.max(0, 1 - Math.hypot(cam.x - 7, cam.z - 6) / 9) : 0;
+  const nearPlace = Math.min(
+    Math.hypot(cam.x, cam.z) / 12,
+    Math.hypot(cam.x + 5, cam.z - 23) / 8,
+    Math.hypot(cam.x + 16, cam.z - 37) / 8,
+    done('bakery') ? Math.hypot(cam.x - 7, cam.z - 6) / 9 : Infinity,
+  );
+  const courtyard = Math.max(0, 1 - nearPlace);
   const distance = cam.dist - Math.max(0, 12.5 - 10.8) * courtyard * Math.min(1, cam.dist / 12.5);
   const h = Math.cos(cam.pitch) * distance;
   // pulled back, aim a little ahead and up so the view opens onto what's in front
@@ -310,7 +323,7 @@ function updatePlayer(dt) {
 function updateVillager(v, dt) {
   v.activity = null;
   const dpx = pl.x - v.x, dpz = pl.z - v.z, dp = Math.hypot(dpx, dpz);
-  if (speaking && v !== speaking && done('bakery') && Math.hypot(pl.x - 7, pl.z - 6) < 7) {
+  if (speaking && v !== speaking) {
     const midX = (pl.x + speaking.x) / 2, midZ = (pl.z + speaking.z) / 2;
     const awayX = v.x - midX, awayZ = v.z - midZ;
     const distance = Math.hypot(awayX, awayZ);
@@ -343,20 +356,21 @@ function updateVillager(v, dt) {
     v.c.root.rotation.y = v.ry;
     return speed;
   }
-  const routine = started && bakeryRoutine(v, life.day, done('bakery'), life.festival, speaking === v || chat?.a === v || chat?.b === v || progress.jobs[v.name] === 'working');
+  const destination = started && life.destination(v);
+  const routine = started && !life.festival && (bakeryRoutine(v, life.day, done('bakery'), false, false) ||
+    villagerRoutine(v, destination, life.day, progress.life));
   v.activity = routine?.work ?? null;
   if (routine) {
     v.ry = turnTo(v.ry, routine.facing, Math.min(1, dt * 5));
     setPose(v.c, v.x, v.z, v.ry);
     return 0;
   }
-  const destination = started && life.destination(v);
   if (destination && (v.c.baking || dp >= 2.35 || progress.life.lantern === 'invited' && v.name === 'Dot')) {
-    const waypoint = v.c.baking ? bakerPath(v, destination) : destination;
+    const waypoint = bakerPath(v, destination);
     const dx = waypoint[0] - v.x, dz = waypoint[1] - v.z;
     const distance = Math.hypot(dx, dz);
     let pace = 0;
-    if (distance > (v.c.baking ? .13 : .6)) {
+    if (distance > .13) {
       const step = Math.min(dt * 2.6, distance);
       v.ry = turnTo(v.ry, Math.atan2(dx, dz), Math.min(1, dt * 6));
       pace = move(v, step * dx / distance, step * dz / distance) ||
@@ -568,7 +582,7 @@ function takePhoto(name, project = projects[name]) {
   const right = new THREE.Vector3(forward.z, 0, -forward.x);
   const guest = makeKid();
   if (hat.visible) guest.head.add(hat.clone());
-  const group = [guest, ...project.villagers.map(villager => byName[villager].make())];
+  const group = [guest, ...project.villagers.map(villager => makeResident(byName[villager]))];
   const portrait = new THREE.PerspectiveCamera(name === 'beacon' ? 55 : 41, 1.5, 0.5, 900);
   const distance = name === 'opening' ? 10 : 7;
   portrait.position.set(ax + forward.x * distance, groundAt(ax, az) + 3.6, az + forward.z * distance);
@@ -1320,6 +1334,7 @@ function update(dt) {
     const sp = updateVillager(v, dt);
     animate(v.c, dt, time, sp, reducedMotion.matches);
     animateBaker(v.c, dt, time, v.activity ? { work: v.activity } : null, reducedMotion.matches);
+    animateVillagerWork(v.c, dt, time, v.activity, reducedMotion.matches);
     if (v === speaking && speechGesture > 0 && !reducedMotion.matches) {
       const gesture = Math.sin(Math.PI * speechGesture / 0.55);
       v.c.head.rotation.x += gesture * 0.13;
@@ -1376,7 +1391,7 @@ if (TEST) {
       life: structuredClone(progress.life), day: life.day, festivalActive: life.festival, speaking: speaking?.name ?? null, talkBlend: talkView.blend,
       cameraPosition: camera.position.toArray(), cameraQuaternion: camera.quaternion.toArray(),
       yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
-      villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state, activity: v.activity, carrying: v.c.baking?.work.visible ?? false })),
+      villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state, activity: v.activity, carrying: v.c.baking?.work.visible ?? v.c.dailyWork?.prop.visible ?? false })),
     }),
     warp(x, z) {
       pl.x = cam.x = x;
