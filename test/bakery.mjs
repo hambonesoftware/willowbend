@@ -96,6 +96,9 @@ try {
   page = mobile;
   await open();
   await page.evaluate(() => { WB.warp(3, 1); WB.zoom(14); WB.lookAt(7, 8.5); WB.sim(32); });
+  const mobileCrew = (await info()).villagers.filter(v => ['Pip', 'Clover'].includes(v.name));
+  assert.ok(mobileCrew.every(v => Math.hypot(v.x - 7.4, v.z - 5.25) < 1.5),
+    'bakers reach work when a customer watches from nearby');
   await page.screenshot({ animations: 'disabled', path: 'test-results/bakery-phone.png' });
   await button('Backpack').tap();
   assert.equal(await page.locator('#backpack').isVisible(), true);
