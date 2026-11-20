@@ -1,7 +1,10 @@
+import { grainTexture, storyMaterial, updateArt } from './art-materials.js';
+import { villageScenery } from './village-scenery.js';
+import { bakeryCourtyard } from './bakery-courtyard.js';
 // Builds the land, water, paths, sky and every piece of scenery, then bakes the static parts.
 import * as THREE from 'three';
 import { lifeScenery } from './life-scenery.js';
-import { RAMP, flat, glowTex, bake, ball, at, cone, mesh, box } from './gfx.js';
+import { flat, glowTex, bake, ball, at, cone, mesh, box } from './gfx.js';
 import { reseed, rand, rng, pick, fbm, smooth, lerp, polyDist } from './util.js';
 import {
   WATER, WORLD, RING, LIMIT, RIVER, POND, BRIDGE, PATHS, SITES,
@@ -10,7 +13,7 @@ import {
 import * as P from './props.js';
 import { deposits, projects, workbench, plots, meadowBoard, neighborhood, plotProject, villageJobs } from './rebuild.js';
 
-const SKY = { top: 0x4aaeea, mid: 0x9fdcf8, bot: 0xfff2cc, fog: 0xdcefee };
+const SKY = { top: 0x76b2cc, mid: 0xb5d1d2, bot: 0xf3dfbb, fog: 0xd8e0cf };
 const PETALS = [0xffffff, 0xff8fb0, 0xffd166, 0xc79bff, 0xff7a59];
 
 export function buildWorld(scene) {
@@ -20,9 +23,9 @@ export function buildWorld(scene) {
   scene.background = new THREE.Color(SKY.mid);
 
   // ---------- light ----------
-  const daylight = new THREE.HemisphereLight(0xffffff, 0xe6d4b8, 1.8);
+  const daylight = new THREE.HemisphereLight(0xf1f0de, 0xb8a583, 1.6);
   scene.add(daylight);
-  const sun = new THREE.DirectionalLight(0xfff1d8, 1.45);
+  const sun = new THREE.DirectionalLight(0xffe0ae, 2.05);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -34, right: 34, top: 34, bottom: -34, near: 1, far: 160 });
@@ -31,7 +34,7 @@ export function buildWorld(scene) {
   sun.shadow.normalBias = 0.05;
   scene.add(sun, sun.target);
   W.sun = sun;
-  const SUN_DIR = new THREE.Vector3(-20, 17, 20).normalize();
+  const SUN_DIR = new THREE.Vector3(-20, 28, -20).normalize();
   // the shadow box follows whoever we're looking at, snapped to whole texels so edges don't crawl
   W.follow = (x, z) => {
     const texel = 68 / 2048;
@@ -79,16 +82,14 @@ export function buildWorld(scene) {
   const far = new THREE.Group();
   for (let i = 0; i < 46; i++) {
     const a = (i / 46) * Math.PI * 2 + rand(-0.05, 0.05), r = rand(200, 250), h = rand(30, 62), w = rand(26, 44);
-    const col = pick([0x93b0e0, 0x829fd8, 0x8aa6dc, 0x9db7e4]);
-    const m = cone(w, h, col, 0, 10);
+    const col = pick([0xa4b3b0, 0x94a8a5, 0x9fafa7, 0xb0b9aa]);
+    const m = ball(1, col, 0, 14, 10);
+    m.scale.set(w, h, w * .7);
     m.castShadow = m.receiveShadow = false;
-    far.add(at(m, Math.cos(a) * r, h / 2 - 4, RING.z + Math.sin(a) * r));
-    const snow = cone(w * 0.34, h * 0.34, 0xffffff, 0, 10);
-    snow.castShadow = false;
-    far.add(at(snow, Math.cos(a) * r, h * 0.83 - 4.1, RING.z + Math.sin(a) * r));
+    far.add(at(m, Math.cos(a) * r, -10, RING.z + Math.sin(a) * r));
   }
   scene.add(far);
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(700, 48), new THREE.MeshToonMaterial({ color: 0x86c98e, gradientMap: RAMP }));
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(700, 48), storyMaterial(0x9cac83));
   floor.rotation.x = -Math.PI / 2; floor.position.y = -6;
   scene.add(floor);
 
@@ -102,9 +103,9 @@ export function buildWorld(scene) {
     const x = pos.getX(i), z = pos.getZ(i), h = height(x, z);
     pos.setY(i, h);
     const n = fbm(x * 0.05, z * 0.05, 3);
-    c.set(0x8ed35f).lerp(c2.set(0x7fca5c), smooth(-0.3, 0.4, n));
-    if (x > 38) c.lerp(c2.set(0xa6df6a), 0.55);                                  // sunny meadow
-    if (z < -30 && x < 24 && x > -62) c.lerp(c2.set(0x6fb35a), smooth(-30, -42, z) * 0.75); // woods floor
+    c.set(0x97b875).lerp(c2.set(0x87aa6a), smooth(-0.3, 0.4, n));
+    if (x > 38) c.lerp(c2.set(0xb0c881), 0.55);                                  // sunny meadow
+    if (z < -30 && x < 24 && x > -62) c.lerp(c2.set(0x738f61), smooth(-30, -42, z) * 0.75); // woods floor
     if (x < -54) c.lerp(c2.set(0x9cc47a), smooth(-54, -66, x) * 0.6);             // dry highland grass
     // beaches only along real water, not wherever the meadow happens to dip
     const shore = polyDist(RIVER, x, z) < 11 || Math.hypot(x - POND.x, z - POND.z) < POND.r + 6 ? 0.55 : 0.15;
@@ -112,11 +113,16 @@ export function buildWorld(scene) {
     if (h < WATER) c.lerp(c2.set(0xc9b27e), smooth(WATER, WATER - 0.6, h));
     if (h > 7) c.lerp(c2.set(0xb7b0c2), smooth(7, 10, h));
     if (h > 22) c.lerp(c2.set(0xffffff), smooth(22, 26, h));
+    const courtyardBlend = Math.max(0, 1 - Math.hypot((x - 7) / 18, (z - 7) / 16));
+    c.lerp(c2.set(0x9daa75), courtyardBlend * .72);
     cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
   }
   tg.setAttribute('color', new THREE.BufferAttribute(cols, 3));
   tg.computeVertexNormals();
-  const terrain = new THREE.Mesh(tg, new THREE.MeshToonMaterial({ color: 0xffffff, vertexColors: true, gradientMap: RAMP }));
+  const terrain = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 1, map: grainTexture('soil') }));
+  // Terrain uses world-sized texture coordinates, with fine grain over the broad color fields.
+  const terrainUv = tg.attributes.uv;
+  for (let i = 0; i < pos.count; i++) terrainUv.setXY(i, pos.getX(i) * .18, pos.getZ(i) * .18);
   terrain.receiveShadow = true;
   scene.add(terrain);
   W.terrain = terrain;
@@ -129,12 +135,21 @@ export function buildWorld(scene) {
   const wpos = wg.attributes.position, wcol = new Float32Array(wpos.count * 3);
   for (let i = 0; i < wpos.count; i++) {
     const depth = WATER - height(wpos.getX(i), wpos.getZ(i));
-    c.set(0x8fe3f0).lerp(c2.set(0x3f9fd8), smooth(0.1, 1.3, depth));
-    if (depth < 0.12) c.lerp(c2.set(0xffffff), smooth(0.12, -0.05, depth) * 0.9);
+    c.set(0x9dbeb9).lerp(c2.set(0x557f8c), smooth(0.1, 1.3, depth));
+    if (depth < 0.12) c.lerp(c2.set(0xe3e5d4), smooth(0.12, -0.05, depth) * 0.9);
     wcol[i * 3] = c.r; wcol[i * 3 + 1] = c.g; wcol[i * 3 + 2] = c.b;
   }
   wg.setAttribute('color', new THREE.BufferAttribute(wcol, 3));
-  const water = new THREE.Mesh(wg, new THREE.MeshToonMaterial({ color: 0xffffff, vertexColors: true, gradientMap: RAMP, transparent: true, opacity: 0.88 }));
+  const water = new THREE.Mesh(wg, new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: .38, metalness: .02, transparent: true, opacity: .88 }));
+  const waterClock = { value: 0 };
+  water.material.onBeforeCompile = shader => {
+    shader.uniforms.waterClock = waterClock;
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float waterClock;');
+    shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `
+      #include <begin_vertex>
+      transformed.y += (sin(transformed.x * .7 + waterClock) + sin(transformed.z * .6 + waterClock * .7)) * .013;
+    `);
+  };
   water.receiveShadow = true;
   scene.add(water);
   // glints that drift on the water
@@ -168,26 +183,31 @@ export function buildWorld(scene) {
     for (let i = 0; i < N; i++) if (!skip[i] && !skip[i + 1]) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(P2, 3));
+    const uv = [];
+    for (let i = 0; i < P2.length; i += 3) uv.push(P2[i] * .25, P2[i + 2] * .25);
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(idx);
     geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ color, gradientMap: RAMP, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 1, map: grainTexture('soil'), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
     m.receiveShadow = true;
     scene.add(m);
   }
   for (const p of Object.values(PATHS)) {
-    ribbon(p, 2.5, 0xc9a56a, 0.04); ribbon(p, 2.05, 0xf2d9a2, 0.06);
+    ribbon(p, 2.5, 0xb59b75, 0.04); ribbon(p, 2.05, 0xd0bd93, 0.06);
     // round off where the road runs out
     const [ex, ez] = p[p.length - 1];
-    for (const [r, col, lift, f] of [[1.25, 0xc9a56a, 0.04, -2], [1.03, 0xf2d9a2, 0.06, -3]]) {
-      const cap = new THREE.Mesh(new THREE.CircleGeometry(r, 24), new THREE.MeshToonMaterial({ color: col, gradientMap: RAMP, polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f * 2 }));
+    for (const [r, col, lift, f] of [[1.25, 0xb59b75, 0.04, -2], [1.03, 0xd0bd93, 0.06, -3]]) {
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(r, 24), new THREE.MeshStandardMaterial({ color: col, roughness: 1, map: grainTexture('soil'), polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f * 2 }));
       cap.rotation.x = -Math.PI / 2; cap.position.set(ex, height(ex, ez) + lift + 0.02, ez); cap.receiveShadow = true;
       scene.add(cap);
     }
   }
-  const plaza = new THREE.Mesh(new THREE.CircleGeometry(SITES.plaza.r + 0.35, 48), new THREE.MeshToonMaterial({ color: 0xc9a56a, gradientMap: RAMP, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+  const plaza = new THREE.Mesh(new THREE.CircleGeometry(SITES.plaza.r + 0.35, 48), new THREE.MeshStandardMaterial({ color: 0xad9f80, roughness: 1, map: grainTexture('paving'), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
   plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.05; plaza.receiveShadow = true;
   scene.add(plaza);
-  const plazaIn = new THREE.Mesh(new THREE.CircleGeometry(SITES.plaza.r, 48), new THREE.MeshToonMaterial({ color: 0xead6ad, gradientMap: RAMP, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 }));
+  const plazaIn = new THREE.Mesh(new THREE.CircleGeometry(SITES.plaza.r, 48), new THREE.MeshStandardMaterial({ color: 0xcdbb96, roughness: 1, map: grainTexture('paving'), polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 }));
+  const plazaUv = plazaIn.geometry.attributes.uv;
+  for (let i = 0; i < plazaUv.count; i++) plazaUv.setXY(i, plazaUv.getX(i) * 4, plazaUv.getY(i) * 4);
   plazaIn.rotation.x = -Math.PI / 2; plazaIn.position.y = 0.07; plazaIn.receiveShadow = true;
   scene.add(plazaIn);
 
@@ -223,18 +243,21 @@ export function buildWorld(scene) {
   add(P.logPile(-20.5, -10.5, 0.9));
   const [bx, bz] = projects.bakery.site;
   const bakeryFrame = bake(P.frame(bx, bz, toPlaza(bx, bz), 'BAKERY PROJECT'));
-  const bakery = bake(P.cottage(bx, bz, toPlaza(bx, bz), { wall: 0xffdfac, roof: 0xbc5e82, door: 0x80426b, w: 3.4 }));
+  const courtyard = bakeryCourtyard(scene);
+  const bakery = courtyard.building;
   const oven = new THREE.Group();
   oven.position.set(9.5, height(9.5, 8), 8);
   oven.add(at(box(1.05, 0.9, 0.85, 0xbf7157, 0.04, 0.16), 0, 0.45, 0));
   oven.add(at(box(0.56, 0.32, 0.04, 0x4b3140, 0.02, 0.02), 0, 0.4, 0.44));
-  const bakerySign = P.signboard('BAKERY', Math.PI, 8.7, 6.5);
-  scene.add(bakeryFrame, bakery, oven, bakerySign);
+  scene.add(bakeryFrame, oven);
   const bench = P.bench(...workbench, Math.PI / 2);
   const benchSign = P.signboard('WORKBENCH', Math.PI / 2, workbench[0], workbench[1] - 0.5);
   scene.add(bench, benchSign);
   add(P.noticeBoard(-4.4, 9, P.facing(-4.4, 9, 0, 9)));
-  for (const a of [0.785, 2.356, 3.927, 5.498]) add(P.lamp(Math.cos(a) * 7.4, Math.sin(a) * 7.4));
+  for (const a of [0.785, 2.356, 3.927, 5.498]) {
+    const [x, z] = a === .785 ? [4.2, 8.1] : [Math.cos(a) * 7.4, Math.sin(a) * 7.4];
+    add(P.lamp(x, z));
+  }
   add(P.bench(3.9, -3.9, toPlaza(3.9, -3.9)));
   add(P.bench(-3.9, 3.9, toPlaza(-3.9, 3.9)));
   for (const a of [1.2, 4.35]) { const x = Math.cos(a) * 3.9, z = Math.sin(a) * 3.9; for (let k = 0; k < 6; k++) add(P.flower(x + rand(-0.6, 0.6), z + rand(-0.6, 0.6), pick(PETALS))); }
@@ -350,8 +373,8 @@ export function buildWorld(scene) {
     houseScenery.visible = cottageDone;
     bench.visible = benchSign.visible = started;
     bakeryFrame.visible = cottageDone && !bakeryDone;
-    bakery.visible = bakerySign.visible = bakeryDone;
-    oven.visible = ovenBuilt;
+    courtyard.sync(bakeryDone);
+    oven.visible = ovenBuilt && !bakeryDone;
     beacon.visible = beaconDone;
   };
   add(P.cave(SITES.cave.x, SITES.cave.z, P.facing(SITES.cave.x, SITES.cave.z, -82, -36)));
@@ -435,8 +458,8 @@ export function buildWorld(scene) {
     [[-5, 23], [-9, 30], [-16, 37], [-22, 41]],
     [[-28, -6], [-28, -2], [-28, 2], [-36, 1]],
   ]) {
-    ribbon(trail, 1.65, 0xc9a56a, 0.075);
-    ribbon(trail, 1.25, 0xeed5a1, 0.09);
+    ribbon(trail, 1.65, 0xb59b75, 0.075);
+    ribbon(trail, 1.25, 0xd0bd93, 0.09);
   }
 
   const errands = new Map();
@@ -465,14 +488,12 @@ export function buildWorld(scene) {
   W.stats = baked.userData.stats;
   baked.traverse(o => { if (o.userData.flag) W.flag = o; });
 
+  const villageDetails = villageScenery(scene);
   const bal = P.balloon();
   scene.add(bal);
   W.balloon = bal;
 
-  const villageLife = lifeScenery(scene, {
-    cottage: { x: houseX, z: houseZ, facing: houseFacing, visible: () => houseScenery.visible },
-    bakery: { x: bx, z: bz, facing: toPlaza(bx, bz), width: 3.4, visible: () => bakery.visible },
-  });
+  const villageLife = lifeScenery(scene);
   W.setLife = villageLife.sync;
   W.gather = villageLife.gather;
   const nightTop = new THREE.Color(0x172c58), nightMid = new THREE.Color(0x42567c), nightGround = new THREE.Color(0x6d6e8c);
@@ -480,15 +501,19 @@ export function buildWorld(scene) {
   const seasonFog = new THREE.Color();
   const dayColors = { Spring: SKY.fog, Summer: 0xe8e9cd, Autumn: 0xf4debe, Winter: 0xd9e8f7 };
   let lighting = '';
-  W.update = (dt, t, cam, day, racePoint, festival) => {
+  W.update = (dt, t, cam, day, racePoint, festival, reducedMotion) => {
+    updateArt(t, day, reducedMotion);
+    waterClock.value = reducedMotion ? 0 : t * .45;
+    villageDetails.update(t, day, reducedMotion);
+    courtyard.update(t, day, reducedMotion);
     villageLife.update(dt, racePoint, day);
     const state = day.phase + day.season + day.weather + festival;
     if (state !== lighting) {
       lighting = state;
       const darkness = day.phase === 'Night' ? .83 : day.phase === 'Evening' ? .35 : day.weather === 'Rain' ? .22 : 0;
-      daylight.intensity = lerp(1.8, festival ? 1.22 : .85, darkness);
-      sun.intensity = lerp(1.45, .22, darkness);
-      sun.color.setHex(day.phase === 'Evening' ? 0xffbb86 : 0xfff1d8);
+      daylight.intensity = lerp(1.6, festival ? 1 : .6, darkness);
+      sun.intensity = lerp(day.weather === 'Rain' ? 1.2 : 2.25, .16, darkness);
+      sun.color.setHex(day.phase === 'Evening' ? 0xffb77b : 0xffe4bc);
       sky.material.uniforms.top.value.copy(dayTop).lerp(nightTop, darkness);
       sky.material.uniforms.mid.value.copy(dayMid).lerp(nightMid, darkness);
       sky.material.uniforms.bot.value.copy(dayGround).lerp(nightGround, darkness);
@@ -500,14 +525,14 @@ export function buildWorld(scene) {
     W.sunDisk.position.set(cam.position.x + 260, 150, cam.position.z - 330);
     W.sunDisk.lookAt(cam.position);
     for (const cl of W.clouds) {
-      cl.position.x += cl.userData.speed * dt * (day.weather === 'Breezy' ? 1.6 : 1);
+      cl.position.x += (reducedMotion ? 0 : cl.userData.speed * dt) * (day.weather === 'Breezy' ? 1.6 : 1);
       if (cl.position.x > 340) cl.position.x = -340;
       cl.lookAt(cam.position.x, cl.position.y, cam.position.z);
     }
-    for (const g of W.glints) { const s = Math.sin(t * 1.8 + g.userData.ph); g.visible = s > 0.2; g.scale.x = 0.6 + s * 0.4; }
-    if (W.flag) W.flag.rotation.y = Math.sin(t * 2.2) * 0.35;
-    const ba = t * 0.018;
-    bal.position.set(Math.cos(ba) * 70, 30 + Math.sin(t * 0.5) * 1.2, -30 + Math.sin(ba) * 60);
+    for (const g of W.glints) { const s = Math.sin((reducedMotion ? 0 : t) * 1.8 + g.userData.ph); g.visible = s > 0.2; g.scale.x = 0.6 + s * 0.4; }
+    if (W.flag) W.flag.rotation.y = reducedMotion ? 0 : Math.sin(t * 2.2) * .18;
+    const ba = reducedMotion ? 0 : t * 0.018;
+    bal.position.set(Math.cos(ba) * 70, 30 + Math.sin(reducedMotion ? 0 : t * .5) * 1.2, -30 + Math.sin(ba) * 60);
   };
   return W;
 }

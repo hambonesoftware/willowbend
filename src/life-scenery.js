@@ -4,7 +4,7 @@ import { locations } from './life.js';
 import { at, bake, ball, box } from './gfx.js';
 import { cottage, flower, lamp } from './props.js';
 
-export function lifeScenery(scene, buildings) {
+export function lifeScenery(scene) {
   const [x, z] = locations.home;
   const home = bake(cottage(x + 3, z + 2, -2.2, { wall: 0xffdfb8, roof: 0x6ea98b, door: 0x9c5d45, solid: false }));
   const flowerBox = flower(x + 1.6, z + 2, 0xe88492);
@@ -39,19 +39,6 @@ export function lifeScenery(scene, buildings) {
     return post;
   }
 
-  const warm = new THREE.MeshBasicMaterial({ color: 0xffd182 });
-  const windows = Object.values({ ...buildings, home: { x: x + 3, z: z + 2, facing: -2.2, visible: () => home.visible } }).map(building => {
-    const light = new THREE.Group();
-    const width = building.width ?? 2.8;
-    for (const [side, offset] of [[-1, -.085], [-1, .085], [1, -.085], [1, .085]]) {
-      const pane = new THREE.Mesh(new THREE.PlaneGeometry(.115, .27), warm);
-      light.add(at(pane, side * width * .31 + offset, 1.22, 1.283));
-    }
-    light.position.set(building.x, groundAt(building.x, building.z), building.z);
-    light.rotation.y = building.facing;
-    scene.add(light);
-    return { light, visible: building.visible };
-  });
   const pathLights = new THREE.Group();
   for (const [lx, lz] of [[-3, 21], [1.5, 13], [3, -9], [-2, -19]]) {
     pathLights.add(lantern(lx, lz, 1.35));
@@ -105,7 +92,6 @@ export function lifeScenery(scene, buildings) {
   function update(dt, point, day) {
     const dark = day.phase === 'Night' || day.phase === 'Evening';
     pathLights.visible = dark && home.visible;
-    for (const { light, visible } of windows) light.visible = dark && visible();
     if (seedling) {
       const growth = seedling.watered ? Math.min(1, (day.time - seedling.planted) / 45) : 0;
       shoots.scale.setScalar(.4 + .6 * growth);
