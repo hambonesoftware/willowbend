@@ -44,12 +44,16 @@ export function chibi(o) {
   const skull = ball(0.62, o.skin, T, 28, 20);
   skull.scale.set(1.08, 0.98, 1);
   head.add(skull);
+  const eyes = [];
   for (const sx of [-1, 1]) {
+    const eye = new THREE.Group();
+    head.add(eye);
+    eyes.push(eye);
     const e = new THREE.Mesh(new THREE.SphereGeometry(0.098, 18, 14), EYE);
     e.scale.set(1, 1.42, 0.45); e.position.set(sx * 0.235, -0.03, 0.575); e.rotation.y = sx * 0.36;
-    head.add(e);
-    head.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.036, 10, 8), WHITE), sx * 0.235 + 0.032, 0.04, 0.625));
-    head.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.017, 8, 6), WHITE), sx * 0.235 - 0.034, -0.085, 0.618));
+    eye.add(e);
+    eye.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.036, 10, 8), WHITE), sx * 0.235 + 0.032, 0.04, 0.625));
+    eye.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.017, 8, 6), WHITE), sx * 0.235 - 0.034, -0.085, 0.618));
     const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), BLUSH);
     b.scale.set(1.15, 0.62, 0.25); b.position.set(sx * 0.42, -0.2, 0.44); b.rotation.y = sx * 0.75;
     head.add(b);
@@ -100,15 +104,20 @@ export function chibi(o) {
   if (o.tuft) for (const [x, rz] of [[-0.06, 0.4], [0.06, -0.3]]) { const t = cap(0.05, 0.16, o.tuft, 0.02); t.rotation.z = rz; head.add(at(t, x, 0.68, 0)); }
 
   root.traverse(m => { if (m.isMesh && !m.userData.ink) m.castShadow = true; });
-  return { root, body, head, arms, legs, ears: earPivots, walk: 0, speed: 0 };
+  return { root, body, head, arms, legs, eyes, ears: earPivots, walk: 0, speed: 0 };
 }
 
 // One cycle for everyone: legs swing, arms counter-swing, a little hop, ears flop.
-export function animate(c, dt, t, speed) {
+export function animate(c, dt, t, speed, reducedMotion = false) {
   c.speed += (speed - c.speed) * Math.min(1, dt * 10);
   const s = Math.min(1, c.speed / 4);
   c.walk += dt * (5 + c.speed * 2.2);
   const p = c.walk, sw = Math.sin(p);
+  const idle = 1 - s;
+  const phase = (t + (c.ph ?? 0) * .7) % 4.7;
+  const lid = reducedMotion ? 1 : phase < .14 ? Math.max(.08, Math.abs(phase - .07) / .07) : 1;
+  for (const eye of c.eyes) eye.scale.y = lid;
+  c.head.rotation.y = reducedMotion ? 0 : Math.sin(t * .55 + (c.ph ?? 0)) * .055 * idle;
   c.legs[0].rotation.x = sw * 0.75 * s;
   c.legs[1].rotation.x = -sw * 0.75 * s;
   if (!c.armHold) {
@@ -117,11 +126,11 @@ export function animate(c, dt, t, speed) {
     c.arms[-1].rotation.z = -0.5 + s * 0.2;
     c.arms[1].rotation.z = 0.5 - s * 0.2;
   }
-  const breathe = Math.sin(t * 2.2 + (c.ph || 0)) * 0.02 * (1 - s);
+  const breathe = reducedMotion ? 0 : Math.sin(t * 2.2 + (c.ph || 0)) * 0.015 * (1 - s);
   c.body.position.y = Math.abs(Math.cos(p)) * 0.11 * s + breathe;
   c.body.rotation.x = 0.1 * s;
   c.body.rotation.z = Math.sin(p) * 0.05 * s;
-  c.head.rotation.x = -0.06 * s + Math.sin(t * 1.6 + (c.ph || 0)) * 0.035;
+  c.head.rotation.x = -0.06 * s + (reducedMotion ? 0 : Math.sin(t * 1.6 + (c.ph || 0)) * 0.025);
   for (const [i, e] of c.ears.entries()) e.rotation.x = Math.sin(p * 2 + i) * 0.18 * s - 0.05 * s;
 }
 
@@ -170,11 +179,17 @@ export function makeDog() {
 export function makeFrog() {
   const c = chibi({ skin: 0x8fd16a, outfit: 0xf2b441, legs: 0x8fd16a });
   // frogs keep their eyes up top
-  c.head.children.filter(m => m.material === EYE || m.material === WHITE).forEach(m => { m.visible = false; });
+  c.eyes.forEach(eye => { eye.visible = false; });
+  c.head.children.filter(m => m.material === EYE).forEach(m => { m.visible = false; });
+  c.eyes = [];
   for (const sx of [-1, 1]) {
     c.head.add(at(ball(0.21, 0x8fd16a, 0.028), sx * 0.3, 0.5, 0.22));
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), EYE); c.head.add(at(e, sx * 0.3, 0.53, 0.4));
-    c.head.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), WHITE), sx * 0.3 + 0.03, 0.57, 0.48));
+    const eye = new THREE.Group();
+    eye.position.set(sx * .3, .53, .4);
+    c.eyes.push(eye);
+    c.head.add(eye);
+    eye.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), EYE));
+    eye.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), WHITE), .03, .04, .08));
   }
   const smile = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.017, 6, 18, Math.PI), EYE);
   smile.rotation.z = Math.PI; c.head.add(at(smile, 0, -0.08, 0.6));

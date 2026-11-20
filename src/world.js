@@ -1,3 +1,4 @@
+import { bakeryCourtyard } from './bakery-courtyard.js';
 // Builds the land, water, paths, sky and every piece of scenery, then bakes the static parts.
 import * as THREE from 'three';
 import { lifeScenery } from './life-scenery.js';
@@ -10,7 +11,7 @@ import {
 import * as P from './props.js';
 import { deposits, projects, workbench, plots, meadowBoard, neighborhood, plotProject, villageJobs } from './rebuild.js';
 
-const SKY = { top: 0x4aaeea, mid: 0x9fdcf8, bot: 0xfff2cc, fog: 0xdcefee };
+const SKY = { top: 0x76b2cc, mid: 0xb5d1d2, bot: 0xf3dfbb, fog: 0xd8e0cf };
 const PETALS = [0xffffff, 0xff8fb0, 0xffd166, 0xc79bff, 0xff7a59];
 
 export function buildWorld(scene) {
@@ -20,9 +21,9 @@ export function buildWorld(scene) {
   scene.background = new THREE.Color(SKY.mid);
 
   // ---------- light ----------
-  const daylight = new THREE.HemisphereLight(0xffffff, 0xe6d4b8, 1.8);
+  const daylight = new THREE.HemisphereLight(0xe5edf1, 0xb29b77, 1.35);
   scene.add(daylight);
-  const sun = new THREE.DirectionalLight(0xfff1d8, 1.45);
+  const sun = new THREE.DirectionalLight(0xffe0ae, 2.05);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -34, right: 34, top: 34, bottom: -34, near: 1, far: 160 });
@@ -31,7 +32,7 @@ export function buildWorld(scene) {
   sun.shadow.normalBias = 0.05;
   scene.add(sun, sun.target);
   W.sun = sun;
-  const SUN_DIR = new THREE.Vector3(-20, 17, 20).normalize();
+  const SUN_DIR = new THREE.Vector3(-20, 28, -20).normalize();
   // the shadow box follows whoever we're looking at, snapped to whole texels so edges don't crawl
   W.follow = (x, z) => {
     const texel = 68 / 2048;
@@ -102,9 +103,9 @@ export function buildWorld(scene) {
     const x = pos.getX(i), z = pos.getZ(i), h = height(x, z);
     pos.setY(i, h);
     const n = fbm(x * 0.05, z * 0.05, 3);
-    c.set(0x8ed35f).lerp(c2.set(0x7fca5c), smooth(-0.3, 0.4, n));
-    if (x > 38) c.lerp(c2.set(0xa6df6a), 0.55);                                  // sunny meadow
-    if (z < -30 && x < 24 && x > -62) c.lerp(c2.set(0x6fb35a), smooth(-30, -42, z) * 0.75); // woods floor
+    c.set(0x97b875).lerp(c2.set(0x87aa6a), smooth(-0.3, 0.4, n));
+    if (x > 38) c.lerp(c2.set(0xb0c881), 0.55);                                  // sunny meadow
+    if (z < -30 && x < 24 && x > -62) c.lerp(c2.set(0x738f61), smooth(-30, -42, z) * 0.75); // woods floor
     if (x < -54) c.lerp(c2.set(0x9cc47a), smooth(-54, -66, x) * 0.6);             // dry highland grass
     // beaches only along real water, not wherever the meadow happens to dip
     const shore = polyDist(RIVER, x, z) < 11 || Math.hypot(x - POND.x, z - POND.z) < POND.r + 6 ? 0.55 : 0.15;
@@ -112,6 +113,8 @@ export function buildWorld(scene) {
     if (h < WATER) c.lerp(c2.set(0xc9b27e), smooth(WATER, WATER - 0.6, h));
     if (h > 7) c.lerp(c2.set(0xb7b0c2), smooth(7, 10, h));
     if (h > 22) c.lerp(c2.set(0xffffff), smooth(22, 26, h));
+    const courtyardBlend = Math.max(0, 1 - Math.hypot((x - 7) / 18, (z - 7) / 16));
+    c.lerp(c2.set(0x9daa75), courtyardBlend * .72);
     cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
   }
   tg.setAttribute('color', new THREE.BufferAttribute(cols, 3));
@@ -223,18 +226,21 @@ export function buildWorld(scene) {
   add(P.logPile(-20.5, -10.5, 0.9));
   const [bx, bz] = projects.bakery.site;
   const bakeryFrame = bake(P.frame(bx, bz, toPlaza(bx, bz), 'BAKERY PROJECT'));
-  const bakery = bake(P.cottage(bx, bz, toPlaza(bx, bz), { wall: 0xffdfac, roof: 0xbc5e82, door: 0x80426b, w: 3.4 }));
+  const courtyard = bakeryCourtyard(scene);
+  const bakery = courtyard.building;
   const oven = new THREE.Group();
   oven.position.set(9.5, height(9.5, 8), 8);
   oven.add(at(box(1.05, 0.9, 0.85, 0xbf7157, 0.04, 0.16), 0, 0.45, 0));
   oven.add(at(box(0.56, 0.32, 0.04, 0x4b3140, 0.02, 0.02), 0, 0.4, 0.44));
-  const bakerySign = P.signboard('BAKERY', Math.PI, 8.7, 6.5);
-  scene.add(bakeryFrame, bakery, oven, bakerySign);
+  scene.add(bakeryFrame, oven);
   const bench = P.bench(...workbench, Math.PI / 2);
   const benchSign = P.signboard('WORKBENCH', Math.PI / 2, workbench[0], workbench[1] - 0.5);
   scene.add(bench, benchSign);
   add(P.noticeBoard(-4.4, 9, P.facing(-4.4, 9, 0, 9)));
-  for (const a of [0.785, 2.356, 3.927, 5.498]) add(P.lamp(Math.cos(a) * 7.4, Math.sin(a) * 7.4));
+  for (const a of [0.785, 2.356, 3.927, 5.498]) {
+    const [x, z] = a === .785 ? [4.2, 8.1] : [Math.cos(a) * 7.4, Math.sin(a) * 7.4];
+    add(P.lamp(x, z));
+  }
   add(P.bench(3.9, -3.9, toPlaza(3.9, -3.9)));
   add(P.bench(-3.9, 3.9, toPlaza(-3.9, 3.9)));
   for (const a of [1.2, 4.35]) { const x = Math.cos(a) * 3.9, z = Math.sin(a) * 3.9; for (let k = 0; k < 6; k++) add(P.flower(x + rand(-0.6, 0.6), z + rand(-0.6, 0.6), pick(PETALS))); }
@@ -350,8 +356,8 @@ export function buildWorld(scene) {
     houseScenery.visible = cottageDone;
     bench.visible = benchSign.visible = started;
     bakeryFrame.visible = cottageDone && !bakeryDone;
-    bakery.visible = bakerySign.visible = bakeryDone;
-    oven.visible = ovenBuilt;
+    courtyard.sync(bakeryDone);
+    oven.visible = ovenBuilt && !bakeryDone;
     beacon.visible = beaconDone;
   };
   add(P.cave(SITES.cave.x, SITES.cave.z, P.facing(SITES.cave.x, SITES.cave.z, -82, -36)));
@@ -471,7 +477,6 @@ export function buildWorld(scene) {
 
   const villageLife = lifeScenery(scene, {
     cottage: { x: houseX, z: houseZ, facing: houseFacing, visible: () => houseScenery.visible },
-    bakery: { x: bx, z: bz, facing: toPlaza(bx, bz), width: 3.4, visible: () => bakery.visible },
   });
   W.setLife = villageLife.sync;
   W.gather = villageLife.gather;
@@ -480,15 +485,16 @@ export function buildWorld(scene) {
   const seasonFog = new THREE.Color();
   const dayColors = { Spring: SKY.fog, Summer: 0xe8e9cd, Autumn: 0xf4debe, Winter: 0xd9e8f7 };
   let lighting = '';
-  W.update = (dt, t, cam, day, racePoint, festival) => {
+  W.update = (dt, t, cam, day, racePoint, festival, reducedMotion) => {
+    courtyard.update(t, day, reducedMotion);
     villageLife.update(dt, racePoint, day);
     const state = day.phase + day.season + day.weather + festival;
     if (state !== lighting) {
       lighting = state;
       const darkness = day.phase === 'Night' ? .83 : day.phase === 'Evening' ? .35 : day.weather === 'Rain' ? .22 : 0;
-      daylight.intensity = lerp(1.8, festival ? 1.22 : .85, darkness);
-      sun.intensity = lerp(1.45, .22, darkness);
-      sun.color.setHex(day.phase === 'Evening' ? 0xffbb86 : 0xfff1d8);
+      daylight.intensity = lerp(1.35, festival ? .9 : .55, darkness);
+      sun.intensity = lerp(day.weather === 'Rain' ? 1.1 : 2.05, .16, darkness);
+      sun.color.setHex(day.phase === 'Evening' ? 0xffb77b : 0xffe4bc);
       sky.material.uniforms.top.value.copy(dayTop).lerp(nightTop, darkness);
       sky.material.uniforms.mid.value.copy(dayMid).lerp(nightMid, darkness);
       sky.material.uniforms.bot.value.copy(dayGround).lerp(nightGround, darkness);

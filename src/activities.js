@@ -1,4 +1,4 @@
-import { locations } from './life.js';
+import { bakeryStations } from './bakery-routines.js';
 
 export const raceCourse = [[0, 24], [0, 29], [-3, 34], [-8, 37]];
 export const treasureSite = [-2, -29];
@@ -22,8 +22,9 @@ export function scheduledSpot(villager, phase, bakery, festival) {
     return [Math.sin(angle) * 5, Math.cos(angle) * 5];
   }
   if (phase === 'Night') return villager.home;
-  if (bakery && villager.name === 'Clover' && phase === 'Afternoon') return [8.6, 5.7];
-  if (bakery && villager.name === 'Pip' && phase === 'Afternoon') return locations.bakery;
+  if (bakery && bakeryStations[villager.name] && ['Morning', 'Afternoon'].includes(phase)) {
+    return bakeryStations[villager.name].spot;
+  }
   if (!bakery && villager.name === 'Pip' && phase === 'Morning') return [2.7, 19.1];
   return favoritePlaces[villager.name][['Morning', 'Afternoon', 'Evening'].indexOf(phase)];
 }

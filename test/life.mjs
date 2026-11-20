@@ -1,3 +1,4 @@
+import { bakeryRoutine, bakeryStations } from '../src/bakery-routines.js';
 import assert from 'node:assert/strict';
 import { advanceDay, calendar, chapter, createLife, DAY_SECONDS, friendship, letters, remember } from '../src/life.js';
 import { raceCourse, scheduledSpot, timingHit } from '../src/activities.js';
@@ -56,6 +57,18 @@ assert.equal(timingHit(1.6, .89), false);
 assert.notDeepEqual(scheduledSpot({ name: 'Pip', home: [11, 13] }, 'Morning', true, false),
   scheduledSpot({ name: 'Pip', home: [11, 13] }, 'Morning', false, false));
 assert.deepEqual(scheduledSpot({ name: 'Reed', home: [-16, 37] }, 'Night', true, false), [-16, 37]);
+
+for (const [name, station] of Object.entries(bakeryStations)) {
+  const villager = { name, x: station.spot[0], z: station.spot[1], home: [11, 13] };
+  assert.deepEqual(scheduledSpot(villager, 'Morning', true, false), station.spot);
+  assert.deepEqual(scheduledSpot(villager, 'Afternoon', true, false), station.spot);
+  assert.ok(bakeryRoutine(villager, { phase: 'Morning' }, true, false, false));
+  assert.equal(bakeryRoutine(villager, { phase: 'Morning' }, false, false, false), null);
+  assert.equal(bakeryRoutine(villager, { phase: 'Morning' }, true, false, true), null);
+  assert.equal(bakeryRoutine(villager, { phase: 'Morning' }, true, true, false), null);
+  assert.equal(bakeryRoutine(villager, { phase: 'Evening' }, true, false, false), null);
+  assert.deepEqual(scheduledSpot(villager, 'Night', true, false), villager.home);
+}
 
 Object.assign(life, { arrival: 'welcome', repair: 'old', batch: true });
 assert.match(chapter(life, () => false)[0], /^II ·/);

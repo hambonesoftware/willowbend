@@ -1,3 +1,6 @@
+import { bakerPath } from './bakery-paths.js';
+import { makePip, makeClover, animateBaker } from './bakery-characters.js';
+import { bakeryRoutine } from './bakery-routines.js';
 import { inventoryPanels } from './inventory-panels.js';
 import { itemIcon, stockedItems } from './item-ui.js';
 import { chapter, remember } from './life.js';
@@ -5,7 +8,7 @@ import { villageLife } from './village-life.js';
 import { greetings, topics, chatter } from './dialogue.js';
 import * as THREE from 'three';
 import { buildWorld } from './world.js';
-import { makeKid, makeCat, makeBunny, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
+import { makeKid, makeCat, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
 import { groundAt, hitSolid, walkable, zoneAt, height, WATER } from './layout.js';
 import { rand, clamp, lerp } from './util.js';
 import { projects, deposits, workbench, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject, villageJobs, itemNames, moveItems } from './rebuild.js';
@@ -49,13 +52,13 @@ hat.scale.y = .44;
 player.head.add(hat);
 const CAST = [
   { name: 'Mabel', make: makeCat, home: world.homes.cat, lines: ['Morning! The well water tastes like clouds today.', 'I heard something humming inside Echo Cave. Brr!', 'If you find nice wood, Bruno needs it for the new house.'] },
-  { name: 'Pip', make: makeBunny, home: world.homes.bunny, lines: ['The orchard apples are almost ripe!', 'Have you seen the old watchtower across the creek?', 'I planted carrots. Well, I tried to.'] },
+  { name: 'Pip', make: makePip, home: world.homes.bunny, lines: ['The orchard apples are almost ripe!', 'Have you seen the old watchtower across the creek?', 'I planted carrots. Well, I tried to.'] },
   { name: 'Bruno', make: makeBear, home: world.homes.bear, lines: [] },
   { name: 'Dot', make: makeDuck, home: world.homes.duck, lines: ['Quack! Oh, sorry. Hello!', 'The lily pond is the best place for a nap.', 'Someone lives inside the Elder Tree. I saw a light!'] },
   { name: 'Biscuit', make: makeDog, home: world.homes.dog, lines: ['Wanna race to the bridge? ...Maybe later.', 'I buried something in the woods. I forget where.', 'Every path out of town goes somewhere good!'] },
   { name: 'Fennel', make: makeFrog, home: world.homes.frog, lines: ['Ribbit. The creek is extra sparkly at noon.', 'The highlands are rocky, but the view is worth it.', 'I collect shiny pebbles. Want to see? No? Okay.'] },
   ...villageJobs.map((job, index) => ({
-    name: job.villager, make: [makeCat, makeFrog, makeBunny][index], home: job.start, job,
+    name: job.villager, make: [makeCat, makeFrog, makeClover][index], home: job.start, job,
   })),
 ].map((v, i) => {
   const c = v.make();
@@ -127,11 +130,13 @@ function blendTalkView(position, target, dt) {
   target.lerp(talkLook, ease);
 }
 function followPose(out, look) {
-  const h = Math.cos(cam.pitch) * cam.dist;
+  const courtyard = done('bakery') ? Math.max(0, 1 - Math.hypot(cam.x - 7, cam.z - 6) / 9) : 0;
+  const distance = cam.dist - Math.max(0, 12.5 - 10.8) * courtyard * Math.min(1, cam.dist / 12.5);
+  const h = Math.cos(cam.pitch) * distance;
   // pulled back, aim a little ahead and up so the view opens onto what's in front
-  const ahead = Math.max(0, cam.dist - 12.5);
+  const ahead = Math.max(0, cam.dist - 12.5) + courtyard * 2.2;
   look.set(cam.x - Math.sin(cam.yaw) * ahead * 0.6, cam.y + 1.3 + ahead * 0.3, cam.z - Math.cos(cam.yaw) * ahead * 0.6);
-  out.set(cam.x + Math.sin(cam.yaw) * h, cam.y + 1.3 + Math.sin(cam.pitch) * cam.dist, cam.z + Math.cos(cam.yaw) * h);
+  out.set(cam.x + Math.sin(cam.yaw) * h, cam.y + 1.3 + Math.sin(cam.pitch) * distance, cam.z + Math.cos(cam.yaw) * h);
   // never let the hills swallow the camera
   const g = height(out.x, out.z);
   if (out.y < g + 1.5) out.y = g + 1.5;
@@ -303,7 +308,25 @@ function updatePlayer(dt) {
 
 // ---------- villagers ----------
 function updateVillager(v, dt) {
+  v.activity = null;
   const dpx = pl.x - v.x, dpz = pl.z - v.z, dp = Math.hypot(dpx, dpz);
+  if (speaking && v !== speaking && done('bakery') && Math.hypot(pl.x - 7, pl.z - 6) < 7) {
+    const midX = (pl.x + speaking.x) / 2, midZ = (pl.z + speaking.z) / 2;
+    const awayX = v.x - midX, awayZ = v.z - midZ;
+    const distance = Math.hypot(awayX, awayZ);
+    if (distance < 2.8) {
+      const angle = distance > .01 ? Math.atan2(awayX, awayZ) : v.c.ph;
+      const step = dt * 1.6;
+      for (const offset of [0, .8, -.8, 1.4, -1.4]) {
+        const heading = angle + offset;
+        if (!move(v, Math.sin(heading) * step, Math.cos(heading) * step)) continue;
+        v.ry = turnTo(v.ry, heading, Math.min(1, dt * 5));
+        setPose(v.c, v.x, v.z, v.ry);
+        return 1.6;
+      }
+      return 0;
+    }
+  }
   let listener = v === speaking ? pl : null;
   if (!listener && chat?.a === v) listener = chat.b;
   if (!listener && chat?.b === v) listener = chat.a;
@@ -320,12 +343,20 @@ function updateVillager(v, dt) {
     v.c.root.rotation.y = v.ry;
     return speed;
   }
+  const routine = started && bakeryRoutine(v, life.day, done('bakery'), life.festival, speaking === v || chat?.a === v || chat?.b === v || progress.jobs[v.name] === 'working');
+  v.activity = routine?.work ?? null;
+  if (routine) {
+    v.ry = turnTo(v.ry, routine.facing, Math.min(1, dt * 5));
+    setPose(v.c, v.x, v.z, v.ry);
+    return 0;
+  }
   const destination = started && life.destination(v);
   if (destination && (dp >= 2.35 || progress.life.lantern === 'invited' && v.name === 'Dot')) {
-    const dx = destination[0] - v.x, dz = destination[1] - v.z;
+    const waypoint = v.c.baking ? bakerPath(v, destination) : destination;
+    const dx = waypoint[0] - v.x, dz = waypoint[1] - v.z;
     const distance = Math.hypot(dx, dz);
     let pace = 0;
-    if (distance > 0.6) {
+    if (distance > (v.c.baking ? .13 : .6)) {
       const step = Math.min(dt * 2.6, distance);
       v.ry = turnTo(v.ry, Math.atan2(dx, dz), Math.min(1, dt * 6));
       pace = move(v, step * dx / distance, step * dz / distance) ||
@@ -1274,7 +1305,7 @@ function update(dt) {
     updatePlayer(dt);
     life.update(dt, !!speaking || !!document.querySelector('dialog[open]'));
   }
-  animate(player, dt, time, started ? pl.speed : 0);
+  animate(player, dt, time, started ? pl.speed : 0, reducedMotion.matches);
   if (harvestGesture) {
     if (!reducedMotion.matches && pl.speed < 0.2) {
       const swing = Math.sin(Math.PI * harvestGesture.left / .55);
@@ -1287,7 +1318,8 @@ function update(dt) {
   if (!started) player.arms[-1].rotation.z = -(2.5 + Math.sin(time * 6) * 0.22);
   for (const v of CAST) {
     const sp = updateVillager(v, dt);
-    animate(v.c, dt, time, sp);
+    animate(v.c, dt, time, sp, reducedMotion.matches);
+    animateBaker(v.c, dt, time, v.activity ? { work: v.activity } : null, reducedMotion.matches);
     if (v === speaking && speechGesture > 0 && !reducedMotion.matches) {
       const gesture = Math.sin(Math.PI * speechGesture / 0.55);
       v.c.head.rotation.x += gesture * 0.13;
@@ -1332,7 +1364,7 @@ function update(dt) {
   updateTalk();
   updateChatter(dt);
   world.follow(started ? pl.x : 0, started ? pl.z : 12);
-  world.update(dt, time, camera, life.day, life.racePoint, life.festival);
+  world.update(dt, time, camera, life.day, life.racePoint, life.festival, reducedMotion.matches);
 }
 tick();
 
@@ -1344,7 +1376,7 @@ if (TEST) {
       life: structuredClone(progress.life), day: life.day, festivalActive: life.festival, speaking: speaking?.name ?? null, talkBlend: talkView.blend,
       cameraPosition: camera.position.toArray(), cameraQuaternion: camera.quaternion.toArray(),
       yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
-      villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state })),
+      villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state, activity: v.activity, carrying: v.c.baking?.work.visible ?? false })),
     }),
     warp(x, z) {
       pl.x = cam.x = x;
@@ -1371,6 +1403,7 @@ if (TEST) {
       v.z = z;
       v.state = 'idle';
       v.timer = 20;
+      v.bakeryJourney = null;
       setPose(v.c, x, z, v.ry);
     },
     villager: name => { const v = byName[name]; return { x: v.x, z: v.z }; },
