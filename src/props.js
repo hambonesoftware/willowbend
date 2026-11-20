@@ -107,9 +107,9 @@ export function pine(x, z, s = 1, col = 0x3f9d74) {
   for (let tier = 0; tier < 4; tier++) {
     const radius = 1 - tier * .18;
     const y = 1.05 + tier * .52;
-    for (let branch = 0; branch < 5; branch++) {
-      const angle = branch * Math.PI * 2 / 5 + tier * .75;
-      const bough = ball(radius * .57, canopyMaterial(col, tier * .015 - .03), 0, 12, 8);
+    for (let branch = 0; branch < 4; branch++) {
+      const angle = branch * Math.PI * 2 / 4 + tier * .75;
+      const bough = ball(radius * .57, canopyMaterial(col, tier * .015 - .03), 0, 8, 5);
       bough.scale.set(.8, .55, 1.4);
       bough.rotation.y = angle;
       g.add(at(bough, Math.sin(angle) * radius * .45, y - .08, Math.cos(angle) * radius * .45));

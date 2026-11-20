@@ -365,7 +365,7 @@ function updateVillager(v, dt) {
     setPose(v.c, v.x, v.z, v.ry);
     return 0;
   }
-  if (destination && (v.c.baking || dp >= 2.35 || progress.life.lantern === 'invited' && v.name === 'Dot')) {
+  if (destination && (v.c.baking || progress.life.arrival && v.c.dailyWork || dp >= 2.35 || progress.life.lantern === 'invited' && v.name === 'Dot')) {
     const waypoint = bakerPath(v, destination);
     const dx = waypoint[0] - v.x, dz = waypoint[1] - v.z;
     const distance = Math.hypot(dx, dz);

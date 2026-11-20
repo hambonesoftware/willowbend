@@ -23,7 +23,7 @@ Gathered supplies return the next morning. The crate near the well holds shared 
 
 ## A living storybook village
 
-Homes, market stalls, the bridge, and the meadow buildings share textured timber, plaster, and tiled roofs. The square has worn paving, gardens soften the doorsteps, and the woods, orchard, glade, and pond use layered greenery and natural ground. Leaves and water move gently, birds circle the pond, and village windows and lamps glow after sunset.
+Homes and meadow buildings have textured plaster, timber trim, and tiled roofs. Market stalls and the bridge use warm, weathered wood. The square has worn paving, gardens soften the doorsteps, and the woods, orchard, glade, and pond use layered greenery and natural ground. Leaves and water move gently, birds circle the pond, and village windows and lamps glow after sunset.
 
 Mabel tends flowers, Bruno works wood, Hazel keeps her ledger, Fennel studies stones, Dot waters plants, Reed watches wildlife, and Biscuit plays. Daytime activities follow their schedules and pause for conversation.
 
