@@ -12,14 +12,14 @@ const random = index => {
 
 function surface(color, kind) {
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 128;
+  canvas.width = canvas.height = 256;
   const pen = canvas.getContext('2d');
   pen.fillStyle = '#' + new THREE.Color(color).getHexString();
-  pen.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 540; i++) {
-    const x = random(i * 4) * 128, y = random(i * 4 + 1) * 128;
+  pen.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 1200; i++) {
+    const x = random(i * 4) * 256, y = random(i * 4 + 1) * 256;
     pen.fillStyle = i % 2 ? '#fff0d312' : '#392d2414';
-    pen.fillRect(x, y, kind === 'wood' ? 1 : 1 + random(i * 4 + 2) * 3, kind === 'wood' ? 5 + random(i * 4 + 3) * 34 : 2);
+    pen.fillRect(x, y, kind === 'wood' ? 1 : 1 + random(i * 4 + 2) * 2, kind === 'wood' ? 5 + random(i * 4 + 3) * 34 : 2);
   }
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;

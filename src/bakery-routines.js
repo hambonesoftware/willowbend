@@ -8,4 +8,3 @@ export function bakeryRoutine(villager, day, bakeryOpen, festival, interrupted) 
   if (!station || !bakeryOpen || festival || interrupted || !['Morning', 'Afternoon'].includes(day.phase)) return null;
   return Math.hypot(villager.x - station.spot[0], villager.z - station.spot[1]) < .24 ? station : null;
 }
-

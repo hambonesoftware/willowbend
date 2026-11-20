@@ -45,6 +45,7 @@ try {
   assert.equal(crew.find(v => v.name === 'Pip').activity, 'knead');
   assert.equal(crew.find(v => v.name === 'Clover').activity, 'mix');
   assert.ok(crew.every(v => v.carrying));
+  await page.evaluate(() => { WB.warp(3, 1); WB.lookAt(7, 8.5); WB.sim(1.1); });
   await page.screenshot({ animations: 'disabled', path: 'test-results/bakery-day.png' });
   assert.equal(await page.evaluate(() => WB.walkable(7, 5.8)), true);
   await page.evaluate(() => {
@@ -78,7 +79,7 @@ try {
   await page.evaluate(() => WB.sim(1));
   assert.equal((await info()).villagers.find(v => v.name === 'Pip').activity, 'knead');
 
-  await page.evaluate(seconds => { WB.passTime(seconds); WB.warp(7, 1); WB.lookAt(7, 8.5); WB.sim(1.5); }, DAY_SECONDS / 2);
+  await page.evaluate(seconds => { WB.passTime(seconds); WB.warp(3, 1); WB.lookAt(7, 8.5); WB.sim(1.5); }, DAY_SECONDS / 2);
   assert.equal((await info()).day.phase, 'Evening');
   await page.screenshot({ animations: 'disabled', path: 'test-results/bakery-evening.png' });
   await page.evaluate(() => WB.sim(25));
@@ -94,7 +95,7 @@ try {
   await page.close();
   page = mobile;
   await open();
-  await page.evaluate(() => { WB.warp(7, 1); WB.zoom(14); WB.lookAt(7, 8.5); WB.sim(32); });
+  await page.evaluate(() => { WB.warp(3, 1); WB.zoom(14); WB.lookAt(7, 8.5); WB.sim(32); });
   await page.screenshot({ animations: 'disabled', path: 'test-results/bakery-phone.png' });
   await button('Backpack').tap();
   assert.equal(await page.locator('#backpack').isVisible(), true);
