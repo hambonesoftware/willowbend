@@ -102,6 +102,7 @@ try {
   listen(mobile); await page.close(); page = mobile;
   await page.goto(url, { waitUntil: 'domcontentloaded' }); await page.waitForFunction(() => window.READY);
   await page.locator('#splash').tap();
+  await page.waitForFunction(() => WB.info().started && getComputedStyle(document.getElementById('splash')).opacity === '0');
   await page.evaluate(() => { WB.warp(-6.65, -5.99); WB.lookAt(-10, -9); WB.zoom(12.5); WB.sim(.8); });
   await page.screenshot({ path: 'test-results/square/garden-phone.png' });
   await page.getByRole('button', { name: 'Backpack', exact: true }).tap();

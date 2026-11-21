@@ -16,6 +16,7 @@ leafShape.moveTo(0, 0); leafShape.bezierCurveTo(-.15, .18, -.12, .42, 0, .55);
 leafShape.bezierCurveTo(.13, .38, .13, .16, 0, 0);
 const leafGeo = new THREE.ShapeGeometry(leafShape, 4);
 const stemGeo = new THREE.CylinderGeometry(.012, .018, .55, 5);
+let pathMaterial;
 
 function beam(group, a, b, size, mat = wood) {
   const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b);
@@ -196,20 +197,35 @@ function groundPatch(home) {
 
 function trail(points) {
   const vertices = [], uv = [], indices = [];
+  const curve = new THREE.CatmullRomCurve3(points.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
+  const samples = curve.getSpacedPoints(Math.max(20, Math.ceil(curve.getLength() / .25)));
   let along = 0;
-  for (let i = 0; i < points.length; i++) {
-    const before = points[Math.max(0, i - 1)], after = points[Math.min(points.length - 1, i + 1)];
-    const dx = after[0] - before[0], dz = after[1] - before[1], length = Math.hypot(dx, dz);
-    if (i) along += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+  for (let i = 0; i < samples.length; i++) {
+    const before = samples[Math.max(0, i - 1)], after = samples[Math.min(samples.length - 1, i + 1)];
+    const dx = after.x - before.x, dz = after.z - before.z, length = Math.hypot(dx, dz);
+    if (i) along += samples[i].distanceTo(samples[i - 1]);
     for (const side of [-1, 1]) {
-      const x = points[i][0] - dz / length * .47 * side, z = points[i][1] + dx / length * .47 * side;
+      const width = .54 + Math.sin(along * 2.1) * .025;
+      const x = samples[i].x - dz / length * width * side, z = samples[i].z + dx / length * width * side;
       vertices.push(x, groundAt(x, z) + .16, z); uv.push(side < 0 ? 0 : 1, along);
     }
     if (i) { const n = i * 2; indices.push(n - 2, n - 1, n, n - 1, n + 1, n); }
   }
   const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geometry.setIndex(indices); geometry.computeVertexNormals();
-  const mesh = new THREE.Mesh(geometry, storyMaterial(0xc2b18b, 'soil')); mesh.receiveShadow = true;
+  if (!pathMaterial) {
+    const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 128;
+    const pen = canvas.getContext('2d'), image = pen.createImageData(64, 128);
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 64; x++) {
+      const n = artNoise(x * 19 + y * 97), edge = Math.min(x, 63 - x) / 12, i = (y * 64 + x) * 4;
+      for (const [channel, value] of [194, 177, 139].entries()) image.data[i + channel] = value + (n - .5) * 15;
+      image.data[i + 3] = Math.max(0, Math.min(1, edge + (n - .5) * .25)) * 220;
+    }
+    pen.putImageData(image, 0, 0);
+    const map = new THREE.CanvasTexture(canvas); map.colorSpace = THREE.SRGBColorSpace; map.wrapT = THREE.RepeatWrapping;
+    pathMaterial = new THREE.MeshStandardMaterial({ map, transparent: true, depthWrite: false, roughness: 1 });
+  }
+  const mesh = new THREE.Mesh(geometry, pathMaterial); mesh.receiveShadow = true; mesh.renderOrder = 3;
   return mesh;
 }
 
