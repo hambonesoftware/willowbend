@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { buildWorld } from './world.js';
 import { makeKid, makeCat, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
 import { groundAt, hitSolid, walkable, zoneAt, height, WATER } from './layout.js';
-import { clearCamera } from './camera-clearance.js';
+import { easeCamera } from './camera-clearance.js';
 import { rand, clamp, lerp } from './util.js';
 import { projects, deposits, workbench, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject, villageJobs, itemNames, moveItems } from './rebuild.js';
 
@@ -137,7 +137,8 @@ function blendTalkView(position, target, dt) {
   position.lerp(talkPos, ease);
   target.lerp(talkLook, ease);
 }
-function followPose(out, look) {
+let cameraAvoidAngle = 0;
+function followPose(out, look, dt) {
   const nearPlace = Math.min(
     Math.hypot(cam.x, cam.z) / 12,
     Math.hypot(cam.x + 5, cam.z - 23) / 8,
@@ -154,8 +155,9 @@ function followPose(out, look) {
   // never let the hills swallow the camera
   const g = height(out.x, out.z);
   if (out.y < g + 1.5) out.y = g + 1.5;
-  const safe = clearCamera({ x: cam.x, y: cam.y + 1.3, z: cam.z }, out, world.cameraBuildings);
-  out.set(safe.x, safe.y, safe.z);
+  const safe = easeCamera({ x: cam.x, y: cam.y + 1.3, z: cam.z }, out, world.cameraBuildings, cameraAvoidAngle, dt);
+  cameraAvoidAngle = safe.angle;
+  out.set(safe.position.x, safe.position.y, safe.position.z);
 }
 
 function resize() {
@@ -1365,7 +1367,7 @@ function update(dt) {
     cam.x = lerp(cam.x, pl.x, Math.min(1, dt * 6));
     cam.z = lerp(cam.z, pl.z, Math.min(1, dt * 6));
     cam.y = lerp(cam.y, pl.y, Math.min(1, dt * 4));
-    followPose(tmpPos, tmpLook);
+    followPose(tmpPos, tmpLook, dt);
     if (cam.mode === 'intro') {
       cam.blend = Math.min(1, cam.blend + dt / 1.8);
       const k = cam.blend * cam.blend * (3 - 2 * cam.blend);
@@ -1416,11 +1418,13 @@ if (TEST) {
     lookAt(x, z) { cam.yaw = Math.atan2(-(x - pl.x), -(z - pl.z)); cam.x = pl.x; cam.z = pl.z; cam.y = groundAt(pl.x, pl.z); },
     walkable: (x, z) => walkable(x, z),
     avatarVisible() {
-      const target = new THREE.Vector3(pl.x, player.root.position.y + 1.52, pl.z);
-      const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize(), 0, camera.position.distanceTo(target));
-      const hit = ray.intersectObjects(scene.children, true).find(hit => !hit.object.userData.ink && !(hit.object.material.transparent && hit.object.material.opacity < .5));
-      for (let object = hit?.object; object; object = object.parent) if (object === player.root) return true;
-      return false;
+      return [[-.3, 1.52], [.3, 1.52], [0, .8]].every(([dx, height]) => {
+        const target = new THREE.Vector3(pl.x + dx, player.root.position.y + height, pl.z);
+        const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize(), 0, camera.position.distanceTo(target));
+        const hit = ray.intersectObjects(scene.children, true).find(hit => !hit.object.userData.ink && !(hit.object.material.transparent && hit.object.material.opacity < .5));
+        for (let object = hit?.object; object; object = object.parent) if (object === player.root) return true;
+        return false;
+      });
     },
     height, WATER,
     positionVillager(name, x, z) {

@@ -19,14 +19,14 @@ export function buildingHit(start, end, building) {
   return enter;
 }
 
-export function clearCamera(pivot, desired, buildings) {
+export function clearCamera(pivot, desired, buildings, preferred = 0) {
   const clearance = point => Math.min(1, ...buildings.map(building => buildingHit(pivot, point, building)));
   if (clearance(desired) >= 1) return desired;
   const dx = desired.x - pivot.x, dz = desired.z - pivot.z;
   let best = desired, fraction = clearance(desired);
   // Prefer a nearby open angle before shortening the boom. The user's stored
   // yaw and zoom stay intact and resume when the building no longer blocks them.
-  for (const angle of [.52, -.52, 1.05, -1.05, 1.57, -1.57]) {
+  for (const angle of [preferred, .52, -.52, 1.05, -1.05, 1.57, -1.57]) {
     const c = Math.cos(angle), s = Math.sin(angle);
     const candidate = { x: pivot.x + dx * c - dz * s, y: desired.y, z: pivot.z + dx * s + dz * c };
     const clear = clearance(candidate);
@@ -36,4 +36,20 @@ export function clearCamera(pivot, desired, buildings) {
   const distance = Math.hypot(best.x - pivot.x, best.y - pivot.y, best.z - pivot.z);
   const stop = Math.max(0, fraction - .35 / distance);
   return { x: pivot.x + (best.x - pivot.x) * stop, y: pivot.y + (best.y - pivot.y) * stop, z: pivot.z + (best.z - pivot.z) * stop };
+}
+
+export function easeCamera(pivot, desired, buildings, previous, dt) {
+  const safe = clearCamera(pivot, desired, buildings, previous);
+  const dx = desired.x - pivot.x, dz = desired.z - pivot.z, sx = safe.x - pivot.x, sz = safe.z - pivot.z;
+  const target = Math.atan2(dx * sz - dz * sx, dx * sx + dz * sz);
+  const delta = Math.atan2(Math.sin(target - previous), Math.cos(target - previous));
+  const angle = previous + delta * Math.min(1, dt * 12), c = Math.cos(angle), s = Math.sin(angle);
+  const position = { x: pivot.x + dx * c - dz * s, y: desired.y, z: pivot.z + dx * s + dz * c };
+  const hit = Math.min(1, ...buildings.map(building => buildingHit(pivot, position, building)));
+  if (hit < 1) {
+    const length = Math.hypot(position.x - pivot.x, position.y - pivot.y, position.z - pivot.z);
+    const fraction = Math.max(0, hit - .2 / length);
+    for (const axis of ['x', 'y', 'z']) position[axis] = pivot[axis] + (position[axis] - pivot[axis]) * fraction;
+  }
+  return { angle, position };
 }

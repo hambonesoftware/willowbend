@@ -1,5 +1,5 @@
 import { villagerRoutine } from '../src/villager-routines.js';
-import { buildingHit, clearCamera } from '../src/camera-clearance.js';
+import { buildingHit, clearCamera, easeCamera } from '../src/camera-clearance.js';
 import { bakeryRoutine, bakeryStations } from '../src/bakery-routines.js';
 import assert from 'node:assert/strict';
 import { advanceDay, calendar, chapter, createLife, DAY_SECONDS, friendship, letters, remember } from '../src/life.js';
@@ -14,6 +14,14 @@ assert.ok(buildingHit(cameraPivot, cameraDesired, cameraBuilding) < 1, 'the bake
 const cameraSafe = clearCamera(cameraPivot, cameraDesired, [cameraBuilding]);
 assert.equal(buildingHit(cameraPivot, cameraSafe, cameraBuilding), 1, 'the camera finds an open angle around the building');
 assert.equal(cameraSafe.y, cameraDesired.y, 'an available side view preserves camera height');
+let easedAngle = 0;
+for (let frame = 0; frame < 30; frame++) {
+  const eased = easeCamera(cameraPivot, cameraDesired, [cameraBuilding], easedAngle, 1 / 30);
+  assert.ok(Math.abs(eased.angle - easedAngle) < .65, 'camera clearance eases its turn');
+  assert.equal(buildingHit(cameraPivot, eased.position, cameraBuilding), 1, 'camera remains clear while easing');
+  easedAngle = eased.angle;
+}
+assert.ok(Math.abs(easedAngle) > .5, 'camera completes its move around the obstruction');
 
 const life = createLife();
 assert.match(chapter(life, () => false)[0], /^I ·/);

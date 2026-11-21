@@ -493,7 +493,9 @@ export function buildWorld(scene) {
   };
   W.cameraBuildings = [...villageHomes.flatMap(home => cameraEnvelope(...home.site, toPlaza(...home.site), home.w ?? 2.8, 2.4, 2.1, 3.8)),
     ...cameraEnvelope(7, 8.5, Math.PI, 3.8, 2.8, 2.7, 4.5),
-    ...cameraEnvelope(-17, -13, toPlaza(-17, -13), 2.8, 2.4, 2.1, 3.7)];
+    ...cameraEnvelope(-17, -13, toPlaza(-17, -13), 2.8, 2.4, 2.1, 3.7),
+    // The courtyard tree shares Pip's narrow approach; avoid its crown as well as the roof.
+    { x: 11.7, y: groundAt(11.7, 8.7) + 1.9, z: 8.7, yaw: 0, w: 1.45, d: 1.3, h: 1.8 }];
   const bal = P.balloon();
   scene.add(bal);
   W.balloon = bal;
