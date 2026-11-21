@@ -68,7 +68,9 @@ for (const [name, station] of Object.entries(bakeryStations)) {
   assert.equal(bakeryRoutine(villager, { phase: 'Morning' }, true, false, true), null);
   assert.equal(bakeryRoutine(villager, { phase: 'Morning' }, true, true, false), null);
   assert.equal(bakeryRoutine(villager, { phase: 'Evening' }, true, false, false), null);
-  assert.deepEqual(scheduledSpot(villager, 'Night', true, false), villager.home);
+  const night = scheduledSpot(villager, 'Night', true, false);
+  if (name === 'Pip') assert.ok(Math.abs(Math.hypot(night[0] - 11, night[1] - 13) - 2.35) < .001, 'Pip returns to the doorstep outside the solid house');
+  else assert.deepEqual(night, villager.home);
 }
 
 for (const name of ['Mabel', 'Bruno', 'Dot', 'Biscuit', 'Fennel', 'Hazel', 'Reed']) {

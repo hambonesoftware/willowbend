@@ -1391,6 +1391,7 @@ if (TEST) {
       life: structuredClone(progress.life), day: life.day, festivalActive: life.festival, speaking: speaking?.name ?? null, talkBlend: talkView.blend,
       cameraPosition: camera.position.toArray(), cameraQuaternion: camera.quaternion.toArray(),
       yaw: +cam.yaw.toFixed(3), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, stats: world.stats,
+      district: world.district,
       villagers: CAST.map(v => ({ name: v.name, x: +v.x.toFixed(2), z: +v.z.toFixed(2), state: v.state, activity: v.activity, carrying: v.c.baking?.work.visible ?? v.c.dailyWork?.prop.visible ?? false })),
     }),
     warp(x, z) {

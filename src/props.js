@@ -212,12 +212,33 @@ export function fence(x0, z0, x1, z1, col = CREAM) {
 
 export function well(x, z) {
   const g = new THREE.Group();
-  g.add(at(cyl(0.58, 0.64, 0.6, storyMaterial(0xafa894, 'masonry'), 0, 18), 0, 0.3, 0));
-  g.add(at(flat(new THREE.CircleGeometry(0.46, 20), 0x58b8e8), 0, 0.605, 0).rotateX(-Math.PI / 2));
+  const masonry = [0xb6ad93, 0xa29f8b, 0xc0b69a].map(c => storyMaterial(c, 'masonry'));
+  // Individual courses make the well a built object, with an actual opening above the water.
+  for (let row = 0; row < 3; row++) for (let block = 0; block < 12; block++) {
+    const a = (block + row % 2 * .5) * Math.PI * 2 / 12;
+    const piece = box(.30, .185, .17, masonry[(row + block) % 3], 0, .035);
+    piece.rotation.y = -a + Math.PI / 2;
+    g.add(at(piece, Math.cos(a) * .55, .10 + row * .185, Math.sin(a) * .55));
+  }
+  g.add(at(flat(new THREE.CircleGeometry(0.46, 24), 0x759c9d), 0, .30, 0).rotateX(-Math.PI / 2),
+    at(torus(.55, .065, masonry[0], 0).rotateX(Math.PI / 2), 0, .65, 0));
   for (const sx of [-1, 1]) g.add(at(box(0.11, 1.3, 0.11, storyMaterial(0x9a6a44, 'wood'), 0.024, 0.03), sx * 0.52, 1.0, 0));
   const r = tiledRoof(1.55, 1.2, .55, 0xb0765c); g.add(at(r, 0, 1.85, 0));
-  const axle = cyl(0.05, 0.05, 1.0, darkWoodSurface, 0.02, 8); axle.rotation.z = Math.PI / 2; g.add(at(axle, 0, 1.45, 0));
-  g.add(at(cyl(0.1, 0.12, 0.18, 0x8d98b0, 0.02, 10), 0, 1.0, 0));
+  const axle = cyl(0.05, 0.05, 1.3, darkWoodSurface, .008, 8); axle.rotation.z = Math.PI / 2; g.add(at(axle, 0, 1.45, 0));
+  const rope = storyMaterial(0xc1ae87, 'cloth');
+  for (let i = 0; i < 9; i++) g.add(at(torus(.085, .012, rope, 0).rotateY(Math.PI / 2), -.12 + i * .03, 1.45, 0));
+  g.add(at(cyl(.012, .012, .58, rope, 0, 6), .05, 1.12, 0),
+    at(box(.055, .24, .055, darkWoodSurface, 0), .70, 1.35, 0),
+    at(cyl(.035, .035, .18, woodSurface, 0, 8).rotateZ(Math.PI / 2), .77, 1.23, 0));
+  const bucket = new THREE.Group();
+  bucket.add(at(cyl(.115, .09, .21, woodSurface, 0, 12), 0, .105, 0),
+    at(torus(.105, .014, darkWoodSurface, 0).rotateX(Math.PI / 2), 0, .19, 0),
+    at(torus(.10, .014, darkWoodSurface, 0, Math.PI), 0, .21, 0));
+  g.add(at(bucket, .05, .78, 0));
+  for (const side of [-1, 1]) {
+    const brace = box(.065, .43, .065, woodSurface, 0); brace.rotation.z = side * .6;
+    g.add(at(brace, side * .39, 1.62, 0));
+  }
   place(g, x, z, 0.4);
   addSolid(x, z, 0.75);
   return g;
