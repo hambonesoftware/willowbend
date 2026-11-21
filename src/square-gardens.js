@@ -235,7 +235,7 @@ function garden(home, decor, scene, motion) {
   scene.add(groundPatch(home), trail(home.trail));
   // These boundaries are deliberately open at the front and at the back corners.
   fence(group, home, [-3.5, -.9], [-3.5, ['play', 'stones'].includes(home.style) ? 1.1 : front - .5]);
-  fence(group, home, [3.5, -.9], [3.5, home.style === 'stones' ? .3 : front - .5]);
+  fence(group, home, [3.5, -.9], [3.5, home.style === 'stones' ? .3 : home.style === 'play' ? front - 1.35 : front - .5]);
   if (['keepsakes', 'sewing'].includes(home.style)) {
     fence(group, home, [-3.5, front - .5], [-1.15, front - .5]);
     fence(group, home, [1.15, front - .5], [3.5, front - .5]);

@@ -33,6 +33,11 @@ try {
   await page.waitForFunction(() => window.READY);
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => WB.info().started && getComputedStyle(document.getElementById('splash')).opacity === '0');
+  const bridgeCrossing = await page.evaluate(() => {
+    WB.warp(8.2, -8.4); WB.lookAt(8.2, -20); WB.sim(1.3, ['KeyD', 'ShiftLeft']);
+    return WB.info();
+  });
+  assert.ok(bridgeCrossing.x > 14 && Math.abs(bridgeCrossing.z + 8.4) < .1, 'Biscuit’s fence leaves the established bridge approach open');
 
   // Search the actual collision map, including new fences, old houses, furniture,
   // and the restored bakery. Data-only tests would miss a sealed garden entrance.
