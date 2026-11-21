@@ -33,6 +33,8 @@ The homes around the square have individual gardens. Mabel keeps books and flowe
 
 Residents return to the outside of their own door at night, using the same walking routes through the gardens as the player.
 
+The exploration camera finds a clear side view when a nearby house blocks its usual position, including the tight space between Pip's cottage and the bakery. Your chosen yaw and zoom resume as the view clears.
+
 ## Controls
 
 - **Keyboard and mouse** — WASD or arrow keys to walk, Shift to run, Q/E or drag to turn, minus/plus or scroll to zoom, Space or Enter to interact.

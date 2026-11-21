@@ -68,6 +68,7 @@ try {
     }, [...gate, ...home.site]);
     assert.ok(moved > .35, 'player can walk through ' + home.name + ' gate');
     await page.evaluate(([x, z, hx, hz]) => { WB.warp(x, z); WB.lookAt(hx, hz); WB.zoom(12.5); WB.sim(.6); }, [...gate, ...home.site]);
+    if (home.id === 'pip') assert.ok(await page.evaluate(() => WB.avatarVisible()), 'bakery does not obscure the player entering Pip’s garden');
     await page.screenshot({ path: 'test-results/square/' + home.id + '-garden.png' });
   }
   await page.evaluate(() => { WB.warp(0, 12); WB.lookAt(0, -2); WB.zoom(17); WB.sim(45); });

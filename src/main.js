@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { buildWorld } from './world.js';
 import { makeKid, makeCat, makeBear, makeDuck, makeDog, makeFrog, animate } from './chibi.js';
 import { groundAt, hitSolid, walkable, zoneAt, height, WATER } from './layout.js';
+import { clearCamera } from './camera-clearance.js';
 import { rand, clamp, lerp } from './util.js';
 import { projects, deposits, workbench, loadProgress, saveProgress, complete, contribute, remaining, plots, meadowBoard, neighborhood, plotProject, villageJobs, itemNames, moveItems } from './rebuild.js';
 
@@ -153,6 +154,8 @@ function followPose(out, look) {
   // never let the hills swallow the camera
   const g = height(out.x, out.z);
   if (out.y < g + 1.5) out.y = g + 1.5;
+  const safe = clearCamera({ x: cam.x, y: cam.y + 1.3, z: cam.z }, out, world.cameraBuildings);
+  out.set(safe.x, safe.y, safe.z);
 }
 
 function resize() {
@@ -1412,6 +1415,13 @@ if (TEST) {
     zoom,
     lookAt(x, z) { cam.yaw = Math.atan2(-(x - pl.x), -(z - pl.z)); cam.x = pl.x; cam.z = pl.z; cam.y = groundAt(pl.x, pl.z); },
     walkable: (x, z) => walkable(x, z),
+    avatarVisible() {
+      const target = new THREE.Vector3(pl.x, player.root.position.y + 1.52, pl.z);
+      const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize(), 0, camera.position.distanceTo(target));
+      const hit = ray.intersectObjects(scene.children, true).find(hit => !hit.object.userData.ink && !(hit.object.material.transparent && hit.object.material.opacity < .5));
+      for (let object = hit?.object; object; object = object.parent) if (object === player.root) return true;
+      return false;
+    },
     height, WATER,
     positionVillager(name, x, z) {
       const v = byName[name];

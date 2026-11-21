@@ -1,10 +1,19 @@
 import { villagerRoutine } from '../src/villager-routines.js';
+import { buildingHit, clearCamera } from '../src/camera-clearance.js';
 import { bakeryRoutine, bakeryStations } from '../src/bakery-routines.js';
 import assert from 'node:assert/strict';
 import { advanceDay, calendar, chapter, createLife, DAY_SECONDS, friendship, letters, remember } from '../src/life.js';
 import { raceCourse, scheduledSpot, timingHit } from '../src/activities.js';
 import { availableArc } from '../src/villager-stories.js';
 import { complete, contribute, loadProgress, saveProgress } from '../src/rebuild.js';
+
+const cameraPivot = { x: 0, y: 1.3, z: 0 }, cameraDesired = { x: 0, y: 4, z: 8 };
+const cameraBuilding = { x: 0, y: 0, z: 4, yaw: .2, w: 1.5, d: 1.5, h: 4 };
+assert.deepEqual(clearCamera(cameraPivot, cameraDesired, []), cameraDesired, 'open camera views stay unchanged');
+assert.ok(buildingHit(cameraPivot, cameraDesired, cameraBuilding) < 1, 'the bakery-sized envelope blocks the camera');
+const cameraSafe = clearCamera(cameraPivot, cameraDesired, [cameraBuilding]);
+assert.equal(buildingHit(cameraPivot, cameraSafe, cameraBuilding), 1, 'the camera finds an open angle around the building');
+assert.equal(cameraSafe.y, cameraDesired.y, 'an available side view preserves camera height');
 
 const life = createLife();
 assert.match(chapter(life, () => false)[0], /^I ·/);

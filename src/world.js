@@ -486,6 +486,14 @@ export function buildWorld(scene) {
   const villageDetails = villageScenery(scene);
   const gardens = squareGardens(scene);
   W.district = gardens.report;
+  const cameraEnvelope = (x, z, yaw, w, d, eave, top) => {
+    const y = groundAt(x, z);
+    return [{ x, y, z, yaw, w: w / 2 + .05, d: d / 2 + .05, h: eave },
+      { x, y: y + eave, z, yaw, w: w / 2 + .35, d: d / 2 + .35, h: top - eave }];
+  };
+  W.cameraBuildings = [...villageHomes.flatMap(home => cameraEnvelope(...home.site, toPlaza(...home.site), home.w ?? 2.8, 2.4, 2.1, 3.8)),
+    ...cameraEnvelope(7, 8.5, Math.PI, 3.8, 2.8, 2.7, 4.5),
+    ...cameraEnvelope(-17, -13, toPlaza(-17, -13), 2.8, 2.4, 2.1, 3.7)];
   const bal = P.balloon();
   scene.add(bal);
   W.balloon = bal;
