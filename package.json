@@ -8,7 +8,8 @@
     "test:story": "node test/story.mjs",
     "test:inventory": "node test/inventory.mjs",
     "test:bakery": "node test/bakery.mjs",
-    "test:art": "node test/village-art.mjs"
+    "test:art": "node test/village-art.mjs",
+    "test:square": "node test/square.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.49.1"

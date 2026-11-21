@@ -1,10 +1,31 @@
 import { villagerRoutine } from '../src/villager-routines.js';
+import { buildingHit, clearCamera, easeCamera } from '../src/camera-clearance.js';
 import { bakeryRoutine, bakeryStations } from '../src/bakery-routines.js';
 import assert from 'node:assert/strict';
 import { advanceDay, calendar, chapter, createLife, DAY_SECONDS, friendship, letters, remember } from '../src/life.js';
 import { raceCourse, scheduledSpot, timingHit } from '../src/activities.js';
 import { availableArc } from '../src/villager-stories.js';
 import { complete, contribute, loadProgress, saveProgress } from '../src/rebuild.js';
+
+const cameraPivot = { x: 0, y: 1.3, z: 0 }, cameraDesired = { x: 0, y: 4, z: 8 };
+const cameraBuilding = { x: 0, y: 0, z: 4, yaw: .2, w: 1.5, d: 1.5, h: 4 };
+assert.deepEqual(clearCamera(cameraPivot, cameraDesired, []), cameraDesired, 'open camera views stay unchanged');
+assert.ok(buildingHit(cameraPivot, cameraDesired, cameraBuilding) < 1, 'the bakery-sized envelope blocks the camera');
+const cameraSafe = clearCamera(cameraPivot, cameraDesired, [cameraBuilding]);
+assert.equal(buildingHit(cameraPivot, cameraSafe, cameraBuilding), 1, 'the camera finds an open angle around the building');
+assert.equal(cameraSafe.y, cameraDesired.y, 'an available side view preserves camera height');
+let easedAngle = 0;
+let easedPosition;
+for (let frame = 0; frame < 30; frame++) {
+  const eased = easeCamera(cameraPivot, cameraDesired, [cameraBuilding], easedAngle, 1 / 30);
+  assert.ok(Math.abs(eased.angle - easedAngle) < .65, 'camera clearance eases its turn');
+  assert.equal(buildingHit(cameraPivot, eased.position, cameraBuilding), 1, 'camera remains clear while easing');
+  easedAngle = eased.angle;
+  easedPosition = eased.position;
+}
+assert.notEqual(easedAngle, 0, 'camera moves to a clear side view');
+assert.equal(easedPosition.y, cameraDesired.y, 'camera regains its full height after clearing the obstruction');
+assert.ok(Math.abs(Math.hypot(easedPosition.x, easedPosition.z) - 8) < .001, 'camera regains its full boom length');
 
 const life = createLife();
 assert.match(chapter(life, () => false)[0], /^I ·/);
@@ -68,7 +89,9 @@ for (const [name, station] of Object.entries(bakeryStations)) {
   assert.equal(bakeryRoutine(villager, { phase: 'Morning' }, true, false, true), null);
   assert.equal(bakeryRoutine(villager, { phase: 'Morning' }, true, true, false), null);
   assert.equal(bakeryRoutine(villager, { phase: 'Evening' }, true, false, false), null);
-  assert.deepEqual(scheduledSpot(villager, 'Night', true, false), villager.home);
+  const night = scheduledSpot(villager, 'Night', true, false);
+  if (name === 'Pip') assert.ok(Math.abs(Math.hypot(night[0] - 11, night[1] - 13) - 2.35) < .001, 'Pip returns to the doorstep outside the solid house');
+  else assert.deepEqual(night, villager.home);
 }
 
 for (const name of ['Mabel', 'Bruno', 'Dot', 'Biscuit', 'Fennel', 'Hazel', 'Reed']) {

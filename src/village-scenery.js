@@ -63,23 +63,6 @@ function planter(group, x, z, size, flowers) {
 
 export function villageScenery(scene) {
   const decor = new THREE.Group();
-  const homes = [[-10, -9], [8, -14], [15, 3], [11, 13], [-11, 12], [-16, 3]];
-  for (const [index, [x, z]] of homes.entries()) {
-    const facing = Math.atan2(-x, -z);
-    const dx = Math.sin(facing), dz = Math.cos(facing);
-    const sideX = Math.cos(facing), sideZ = -Math.sin(facing);
-    scene.add(groundPatch(x, z, 2.9, 2.8, index % 2 ? 'grass' : 'soil'));
-    const px = x + dx * 1.6 + sideX * 1.5, pz = z + dz * 1.6 + sideZ * 1.5;
-    planter(decor, px, pz, .28, index % 3 !== 1);
-    for (let i = 0; i < 4; i++) {
-      const sx = x + dx * (1.7 + i * .32), sz = z + dz * (1.7 + i * .32);
-      if (hitSolid(sx, sz, .15)) continue;
-      const paving = cyl(.18, .20, .025, stone, 0, 7);
-      paving.scale.set(1.25, 1, .8);
-      paving.rotation.y = i * 1.5;
-      decor.add(at(paving, sx, groundAt(sx, sz) + .135, sz));
-    }
-  }
   // Hand-set paving and edge planting give the central square a human scale.
   for (let i = 0; i < 50; i++) {
     const angle = i * Math.PI * 2 / 50, r = 6.1 + Math.sin(i * 2.4) * .13;
@@ -98,7 +81,7 @@ export function villageScenery(scene) {
     planter(decor, x, z, .35, true);
   }
   // Tools and small domestic objects belong beside the buildings that use them.
-  for (const [x, z, facing] of [[-13.8, -10.4, .6], [-23, 18, 1.1]]) {
+  for (const [x, z, facing] of [[-23, 18, 1.1]]) {
     const y = groundAt(x, z);
     const board = box(.52, .09, .95, timber, 0, .025);
     board.rotation.y = facing;

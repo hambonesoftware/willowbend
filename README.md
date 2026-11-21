@@ -29,6 +29,12 @@ Mabel tends flowers, Bruno works wood, Hazel keeps her ledger, Fennel studies st
 
 Restoring the bakery opens a tiled shopfront and a courtyard with a bread counter, prep bench, plants, and a place to sit. Pip and Clover wear their own aprons and work there in the morning and afternoon. They put their baking things down to talk, and neighbors give the conversation space. Evening lights the shop windows. The courtyard view comes a little closer as you walk in, and reduced motion quiets the decorative movement.
 
+The homes around the square have individual gardens. Mabel keeps books and flowers beneath a rose arch; Biscuit has a swing and games; Dot collects rainwater beside a birdbath; Pip grows potted herbs; Fennel displays stones beside a small collection room; and the shared sewing room has an outdoor worktable and clothesline. Worn paths lead through open gates. The well has separate stone courses, a rope, a crank, and a bucket. Flower beds, reading tables, and workstations gather around the existing square. A small bird visits Dot's garden, and a few cottage chimneys smoke after sunset. Reduced motion stops the cloth movement and chimney smoke and leaves the bird perched.
+
+Residents return to the outside of their own door at night, using the same walking routes through the gardens as the player.
+
+The exploration camera finds a clear side view when a nearby house blocks its usual position, including the tight space between Pip's cottage and the bakery. Your chosen yaw and zoom resume as the view clears.
+
 ## Controls
 
 - **Keyboard and mouse** — WASD or arrow keys to walk, Shift to run, Q/E or drag to turn, minus/plus or scroll to zoom, Space or Enter to interact.
@@ -71,3 +77,5 @@ Return to the board to assign Pip’s apple delivery and Bruno’s timber haul. 
 Run `npm test` with Edge or Chrome installed. Set `BROWSER_PATH` for a different Chromium executable, or install Playwright Chromium with `npx playwright-core install chromium`. Run `npm run test:story` for Lantern Night, `npm run test:inventory` for item exchanges, and `npm run test:bakery` for bakery routines, or `npm run test:art` for the village and landmark views, work interruptions, and phone controls after dark. The tour saves screenshots to `test-results/`. The story suite takes a screenshot on failure and replays the festival decision on a touch viewport.
 
 To check a deployment that includes the same test hooks and features, set `WB_URL` to its base URL before running `npm test`. The [GitHub Pages site](https://hambonesoftware.github.io/willowbend/) is served from the repository.
+
+Run `npm run test:square` to check all six garden entrances against the actual collision map, walk through each gate, follow daytime and homeward routines, talk in the square, and reload saved progress on a touch viewport with reduced motion. Day, night, conversation, property, and phone screenshots are saved in `test-results/square/` and uploaded by the village-square CI job.

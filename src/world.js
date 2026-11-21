@@ -1,5 +1,7 @@
 import { grainTexture, storyMaterial, updateArt } from './art-materials.js';
 import { villageScenery } from './village-scenery.js';
+import { squareGardens } from './square-gardens.js';
+import { villageHomes } from './village-homes.js';
 import { bakeryCourtyard } from './bakery-courtyard.js';
 // Builds the land, water, paths, sky and every piece of scenery, then bakes the static parts.
 import * as THREE from 'three';
@@ -218,14 +220,7 @@ export function buildWorld(scene) {
 
   // the village
   add(P.well(0, 0));
-  for (const [x, z, o] of [
-    [-10, -9, { wall: 0xfff0d2, roof: 0xe8604c, door: 0x4f9bd6 }],
-    [8, -14, { wall: 0xffe2c8, roof: 0x3fa7a0, door: 0xf2a541, w: 3.0 }],
-    [15, 3, { wall: 0xe9f3ff, roof: 0xf2b441, door: 0xe8604c }],
-    [11, 13, { wall: 0xfde8ef, roof: 0x8f7bd8, door: 0x6cc45e, w: 2.6 }],
-    [-11, 12, { wall: 0xfff0d2, roof: 0xe8604c, door: 0x3fa7a0, w: 2.6 }],
-    [-16, 3, { wall: 0xe8f6e4, roof: 0xf28b6a, door: 0x8f7bd8 }],
-  ]) {
+  for (const { site: [x, z], ...o } of villageHomes) {
     add(P.cottage(x, z, toPlaza(x, z), o));
     const ry = toPlaza(x, z), fx = Math.sin(ry), fz = Math.cos(ry);
     add(P.bush(x - fz * 2.4 + fx * 1.2, z + fx * 2.4 + fz * 1.2, 0.8, 0x58b05c, pick(PETALS)));
@@ -234,7 +229,7 @@ export function buildWorld(scene) {
   const [houseX, houseZ] = W.homes.bear;
   const houseFacing = toPlaza(houseX, houseZ);
   const frame = P.frame(houseX, houseZ, houseFacing);
-  const house = P.cottage(houseX, houseZ, houseFacing, { wall: 0xffe2c8, roof: 0xd7754f, door: 0x3fa7a0 });
+  const house = P.cottage(houseX, houseZ, houseFacing, { wall: 0xffe2c8, roof: 0xd7754f, door: 0x3fa7a0, style: 'carpenter', name: 'Bruno' });
   const frameScenery = bake(frame);
   const houseScenery = bake(house);
   scene.add(frameScenery, houseScenery);
@@ -489,6 +484,18 @@ export function buildWorld(scene) {
   baked.traverse(o => { if (o.userData.flag) W.flag = o; });
 
   const villageDetails = villageScenery(scene);
+  const gardens = squareGardens(scene);
+  W.district = gardens.report;
+  const cameraEnvelope = (x, z, yaw, w, d, eave, top) => {
+    const y = groundAt(x, z);
+    return [{ x, y, z, yaw, w: w / 2 + .05, d: d / 2 + .05, h: eave },
+      { x, y: y + eave, z, yaw, w: w / 2 + .35, d: d / 2 + .35, h: top - eave }];
+  };
+  W.cameraBuildings = [...villageHomes.flatMap(home => cameraEnvelope(...home.site, toPlaza(...home.site), home.w ?? 2.8, 2.4, 2.1, 3.8)),
+    ...cameraEnvelope(7, 8.5, Math.PI, 3.8, 2.8, 2.7, 4.5),
+    ...cameraEnvelope(-17, -13, toPlaza(-17, -13), 2.8, 2.4, 2.1, 3.7),
+    // The courtyard tree shares Pip's narrow approach; avoid its crown as well as the roof.
+    { x: 11.7, y: groundAt(11.7, 8.7) + 1.7, z: 8.7, yaw: 0, w: 1.75, d: 1.6, h: 2.1 }];
   const bal = P.balloon();
   scene.add(bal);
   W.balloon = bal;
@@ -505,6 +512,7 @@ export function buildWorld(scene) {
     updateArt(t, day, reducedMotion);
     waterClock.value = reducedMotion ? 0 : t * .45;
     villageDetails.update(t, day, reducedMotion);
+    gardens.update(t, day, reducedMotion);
     courtyard.update(t, day, reducedMotion);
     villageLife.update(dt, racePoint, day);
     const state = day.phase + day.season + day.weather + festival;
