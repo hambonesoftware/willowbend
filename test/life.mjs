@@ -15,13 +15,17 @@ const cameraSafe = clearCamera(cameraPivot, cameraDesired, [cameraBuilding]);
 assert.equal(buildingHit(cameraPivot, cameraSafe, cameraBuilding), 1, 'the camera finds an open angle around the building');
 assert.equal(cameraSafe.y, cameraDesired.y, 'an available side view preserves camera height');
 let easedAngle = 0;
+let easedPosition;
 for (let frame = 0; frame < 30; frame++) {
   const eased = easeCamera(cameraPivot, cameraDesired, [cameraBuilding], easedAngle, 1 / 30);
   assert.ok(Math.abs(eased.angle - easedAngle) < .65, 'camera clearance eases its turn');
   assert.equal(buildingHit(cameraPivot, eased.position, cameraBuilding), 1, 'camera remains clear while easing');
   easedAngle = eased.angle;
+  easedPosition = eased.position;
 }
-assert.ok(Math.abs(easedAngle) > .5, 'camera completes its move around the obstruction');
+assert.notEqual(easedAngle, 0, 'camera moves to a clear side view');
+assert.equal(easedPosition.y, cameraDesired.y, 'camera regains its full height after clearing the obstruction');
+assert.ok(Math.abs(Math.hypot(easedPosition.x, easedPosition.z) - 8) < .001, 'camera regains its full boom length');
 
 const life = createLife();
 assert.match(chapter(life, () => false)[0], /^I ·/);
